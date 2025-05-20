@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings } from '@/lib/types';
+import type { ContentItem, Platform, AppSettings, ReferenceItem } from '@/lib/types';
 import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { HtmlEditor } from './HtmlEditor';
 import { useToast } from '@/hooks/use-toast';
@@ -39,6 +39,7 @@ interface ContentFormClientProps {
   initialTitle?: string;
   initialTopic?: string;
   initialManualReferenceTexts?: string[];
+  initialReferenceItems?: ReferenceItem[];
 }
 
 export function ContentFormClient({
@@ -46,6 +47,7 @@ export function ContentFormClient({
   initialTitle,
   initialTopic,
   initialManualReferenceTexts,
+  initialReferenceItems,
 }: ContentFormClientProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -61,6 +63,7 @@ export function ContentFormClient({
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
 
   const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
+  const [aiReferenceItemsForDisplay, setAiReferenceItemsForDisplay] = useState<ReferenceItem[]>(initialReferenceItems || []);
 
 
   const form = useForm<ContentFormData>({
@@ -94,6 +97,9 @@ export function ContentFormClient({
         setImagePrompts(content.imagePrompts);
         setSuggestedHashtags(content.hashtags || []);
         setManualReferencesForDisplay(content.manualReferencesUsed?.map(mr => mr.content) || []);
+        // Assuming 'referenceItemsUsed' would be a new field if we were saving AI research items directly to ContentItem
+        // For now, if editing, AI research items are not re-loaded into display, only manual ones.
+        // setAiReferenceItemsForDisplay(content.referenceItemsUsed || []); 
       } else {
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
         router.push('/');
@@ -105,9 +111,10 @@ export function ContentFormClient({
            form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
       }
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
+      setAiReferenceItemsForDisplay(initialReferenceItems || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, initialReferenceItems, form, router, toast]);
 
   const selectedPlatform = form.watch('platform');
 
@@ -118,23 +125,18 @@ export function ContentFormClient({
       return;
     }
     const freshSettings = getStoredSettings();
-    // API key is now handled by .env
-    // if (!freshSettings?.openAIKey) {
-    //   toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
-    //   return;
-    // }
-
+    
     setIsLoadingAi(true);
     try {
       const result = await generateContentForPlatform({
         platform: platform as Platform,
         topic,
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
-        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined, // Pass only for WP
-        // apiKey: freshSettings.openAIKey, // API key is now from .env
+        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined,
         openAIAgentId: freshSettings.openAIAgentId || undefined,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
+        referenceItems: aiReferenceItemsForDisplay.length > 0 ? aiReferenceItemsForDisplay : undefined,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
@@ -156,12 +158,7 @@ export function ContentFormClient({
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
-    // API key is now from .env
-    // const freshSettings = getStoredSettings();
-    //  if (!freshSettings?.openAIKey) {
-    //   toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
-    //   return;
-    // }
+    
     setIsSuggestingHashtags(true);
     try {
       const result = await suggestHashtagsFlow({
@@ -193,6 +190,8 @@ export function ContentFormClient({
       createdAt: existingContent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(text => ({content: text})) : undefined,
+      // If we want to store AI reference items used:
+      // referenceItemsUsed: aiReferenceItemsForDisplay.length > 0 ? aiReferenceItemsForDisplay : undefined,
     };
 
     if (existingContent) {
@@ -206,6 +205,8 @@ export function ContentFormClient({
     setIsSaving(false);
     router.push('/');
   };
+
+  const hasReferences = manualReferencesForDisplay.length > 0 || aiReferenceItemsForDisplay.length > 0;
 
   return (
     <Form {...form}>
@@ -320,26 +321,41 @@ export function ContentFormClient({
               )}
             />
 
-            {manualReferencesForDisplay.length > 0 && (
-              <Accordion type="single" collapsible className="w-full" defaultValue="manual-references-accordion-item">
-                <AccordionItem value="manual-references-accordion-item">
+            {hasReferences && (
+              <Accordion type="single" collapsible className="w-full" defaultValue="reference-materials-accordion">
+                <AccordionItem value="reference-materials-accordion">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
-                       Manual Reference Materials Used for Generation
+                       Reference Materials Used for Generation
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3 pt-2">
-                    <div>
-                      <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
-                      <ul className="list-disc list-inside space-y-1 pl-2">
-                        {manualReferencesForDisplay.map((text, index) => (
-                          <li key={`manual-ref-display-${index}`} className="text-xs text-muted-foreground italic whitespace-pre-wrap">
-                            {text}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    {manualReferencesForDisplay.length > 0 && (
+                        <div>
+                        <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
+                        <ul className="list-disc list-inside space-y-1 pl-2">
+                            {manualReferencesForDisplay.map((text, index) => (
+                            <li key={`manual-ref-display-${index}`} className="text-xs text-muted-foreground italic whitespace-pre-wrap">
+                                {text.length > 200 ? `${text.substring(0, 200)}...` : text}
+                            </li>
+                            ))}
+                        </ul>
+                        </div>
+                    )}
+                    {aiReferenceItemsForDisplay.length > 0 && (
+                        <div>
+                        <h4 className="font-semibold text-sm mb-1 mt-2">AI-Found Research Content:</h4>
+                        <ul className="list-disc list-inside space-y-2 pl-2">
+                            {aiReferenceItemsForDisplay.map((item, index) => (
+                            <li key={`ai-ref-display-${index}`} className="text-xs text-muted-foreground">
+                                <span className="font-medium not-italic text-foreground/80 block">From: {item.url}</span>
+                                <span className="italic whitespace-pre-wrap">{item.summary.length > 300 ? `${item.summary.substring(0,300)}...` : item.summary}</span>
+                            </li>
+                            ))}
+                        </ul>
+                        </div>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
