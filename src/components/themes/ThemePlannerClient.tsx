@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -26,16 +27,30 @@ export function ThemePlannerClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [suggestedThemesList, setSuggestedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic'>[]>([]);
+  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic'>[]>([]);
   const [currentSettings, setCurrentSettings] = useState<AppSettings | null>(null);
   const [storedThemeSuggestions, setStoredThemeSuggestions] = useState<ThemeSuggestion[]>([]);
   const [currentUserInputTopic, setCurrentUserInputTopic] = useState<string>("");
 
+  const refreshStoredThemes = useCallback(() => {
+    setStoredThemeSuggestions(getStoredThemeSuggestions());
+  }, []);
 
   useEffect(() => {
     setCurrentSettings(getStoredSettings());
-    setStoredThemeSuggestions(getStoredThemeSuggestions());
-  }, []);
+    refreshStoredThemes();
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'contentForgeAi_themeSuggestions') {
+        refreshStoredThemes();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+
+  }, [refreshStoredThemes]);
 
   const form = useForm<ThemePlannerFormData>({
     resolver: zodResolver(themePlannerSchema),
@@ -51,18 +66,18 @@ export function ThemePlannerClient() {
       return;
     }
     setIsLoading(true);
-    setCurrentUserInputTopic(data.topic); // Store the topic used for generation
+    setCurrentUserInputTopic(data.topic); 
     try {
       const result = await suggestThemes({
         topic: data.topic,
         numSuggestions: data.numSuggestions,
       });
-      setSuggestedThemesList(result.themes);
+      setGeneratedThemesList(result.themes);
       toast({ title: "Themes Suggested!", description: "AI has generated theme ideas for your topic." });
     } catch (error) {
       console.error("Theme suggestion error:", error);
       toast({ title: "AI Error", description: "Failed to suggest themes. Check console for details.", variant: "destructive" });
-      setSuggestedThemesList([]);
+      setGeneratedThemesList([]);
     }
     setIsLoading(false);
   };
@@ -76,17 +91,17 @@ export function ThemePlannerClient() {
       generatedAt: new Date().toISOString(),
     };
     addThemeSuggestion(newSuggestion);
-    setStoredThemeSuggestions(prev => [newSuggestion, ...prev].sort((a,b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()));
+    refreshStoredThemes(); // Refresh list from storage
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
   
-  const handleDeleteTheme = (id: string) => {
+  const handleDeleteTheme = useCallback((id: string) => {
     if (window.confirm("Are you sure you want to delete this theme idea?")) {
       deleteThemeSuggestionById(id);
-      setStoredThemeSuggestions(prev => prev.filter(s => s.id !== id));
+      refreshStoredThemes(); // Refresh list from storage
       toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
     }
-  };
+  }, [toast, refreshStoredThemes]);
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
     router.push(`/content/new?title=${encodeURIComponent(theme.title)}&topic=${encodeURIComponent(theme.description)}`);
@@ -139,7 +154,7 @@ export function ThemePlannerClient() {
         </Form>
       </Card>
 
-      {suggestedThemesList.length > 0 && (
+      {generatedThemesList.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Suggested Themes for "{currentUserInputTopic}"</CardTitle>
@@ -147,7 +162,7 @@ export function ThemePlannerClient() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-4">
-              {suggestedThemesList.map((theme, index) => (
+              {generatedThemesList.map((theme, index) => (
                 <li key={index} className="p-4 border rounded-md bg-muted/30 shadow-sm">
                   <div className="flex items-start mb-2">
                     <Lightbulb className="h-5 w-5 mr-3 mt-1 text-primary flex-shrink-0" />
@@ -192,7 +207,7 @@ export function ThemePlannerClient() {
                     </Button>
                     <Button variant="destructive" size="icon" onClick={() => handleDeleteTheme(suggestion.id)}>
                       <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Delete theme</span>
+                      <span className="sr-only">Delete theme {suggestion.title}</span>
                     </Button>
                   </div>
                 </li>
@@ -204,3 +219,4 @@ export function ThemePlannerClient() {
     </div>
   );
 }
+

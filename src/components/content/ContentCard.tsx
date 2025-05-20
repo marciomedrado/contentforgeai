@@ -1,3 +1,4 @@
+
 import type { ContentItem, Platform } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -78,3 +79,4 @@ export function ContentCard({ item, onDelete }: ContentCardProps) {
     </Card>
   );
 }
+

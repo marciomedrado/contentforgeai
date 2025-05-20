@@ -1,14 +1,15 @@
+
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { ContentItem } from '@/lib/types';
-import { getStoredContentItems, deleteContentItem as deleteStoredContentItem } from '@/lib/storageService';
+import { getStoredContentItems, deleteContentItemById } from '@/lib/storageService';
 import { ContentCard } from './ContentCard';
 import { ContentFilters, type ContentFiltersState } from './ContentFilters';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { parseISO, startOfDay, endOfDay } from 'date-fns';
 
 export function ContentListClient() {
   const [allItems, setAllItems] = useState<ContentItem[]>([]);
@@ -16,21 +17,36 @@ export function ContentListClient() {
   const [filters, setFilters] = useState<ContentFiltersState>({});
   const { toast } = useToast();
 
-  useEffect(() => {
+  const refreshContentItems = useCallback(() => {
     setAllItems(getStoredContentItems());
-    setIsLoading(false);
   }, []);
 
-  const handleDelete = (id: string) => {
+  useEffect(() => {
+    refreshContentItems();
+    setIsLoading(false);
+
+    // Listen for storage changes to update list if modified in another tab/window
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'contentForgeAi_contentItems') {
+        refreshContentItems();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [refreshContentItems]);
+
+  const handleDelete = useCallback((id: string) => {
     if (window.confirm("Are you sure you want to delete this content item?")) {
-      deleteStoredContentItem(id);
-      setAllItems(prevItems => prevItems.filter(item => item.id !== id));
+      deleteContentItemById(id); // Use the renamed function
+      refreshContentItems(); // Re-fetch from storage to ensure UI is in sync
       toast({
         title: "Content Deleted",
         description: "The content item has been successfully deleted.",
       });
     }
-  };
+  }, [toast, refreshContentItems]);
 
   const filteredItems = useMemo(() => {
     return allItems.filter(item => {
@@ -51,7 +67,28 @@ export function ContentListClient() {
   }, [allItems, filters]);
 
   if (isLoading) {
-    return <p>Loading content...</p>; // Replace with Skeleton loaders later
+     // Basic skeleton while loading
+    return (
+      <div className="space-y-6">
+        <ContentFilters filters={filters} onFiltersChange={setFilters} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="rounded-lg border bg-card text-card-foreground shadow-sm p-6 space-y-4 animate-pulse">
+              <div className="h-6 bg-muted rounded w-3/4"></div>
+              <div className="h-4 bg-muted rounded w-1/2"></div>
+              <div className="h-10 bg-muted rounded w-full"></div>
+              <div className="flex justify-between">
+                <div className="h-6 bg-muted rounded w-1/4"></div>
+                <div className="flex gap-2">
+                  <div className="h-8 w-8 bg-muted rounded"></div>
+                  <div className="h-8 w-8 bg-muted rounded"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -75,3 +112,4 @@ export function ContentListClient() {
     </div>
   );
 }
+

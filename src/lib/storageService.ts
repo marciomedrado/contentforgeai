@@ -1,3 +1,4 @@
+
 import type { ContentItem, AppSettings, ThemeSuggestion } from './types';
 import { DEFAULT_OUTPUT_LANGUAGE } from './constants';
 
@@ -21,6 +22,8 @@ const safeLocalStorageSet = <T>(key: string, value: T): void => {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    // Dispatch a storage event so other components using the same key can update
+    window.dispatchEvent(new StorageEvent('storage', { key }));
   } catch (error) {
     console.error(`Error setting item ${key} in localStorage`, error);
   }
@@ -50,7 +53,7 @@ export const getContentItemById = (id: string): ContentItem | undefined => {
   return items.find(item => item.id === id);
 };
 
-export const deleteContentItem = (id: string): void => {
+export const deleteContentItemById = (id: string): void => {
   const items = getStoredContentItems();
   saveStoredContentItems(items.filter(item => item.id !== id));
 };
@@ -60,7 +63,7 @@ export const deleteContentItem = (id: string): void => {
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
     openAIKey: '',
-    outputLanguage: DEFAULT_OUTPUT_LANGUAGE, // Default language
+    outputLanguage: DEFAULT_OUTPUT_LANGUAGE, 
   };
   const stored = safeLocalStorageGet<Partial<AppSettings>>(SETTINGS_STORAGE_KEY, {});
   return { ...defaultSettings, ...stored };
@@ -81,9 +84,9 @@ export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
 
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
-  // Avoid duplicates by title and description
-  if (!themes.some(t => t.title === theme.title && t.description === theme.description)) {
-    saveStoredThemeSuggestions([theme, ...themes]);
+  // Avoid duplicates by title and description for the same user input topic
+  if (!themes.some(t => t.userInputTopic === theme.userInputTopic && t.title === theme.title && t.description === theme.description)) {
+    saveStoredThemeSuggestions([theme, ...themes].sort((a,b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()));
   }
 };
 
@@ -91,3 +94,4 @@ export const deleteThemeSuggestionById = (id: string): void => {
   const themes = getStoredThemeSuggestions();
   saveStoredThemeSuggestions(themes.filter(theme => theme.id !== id));
 };
+
