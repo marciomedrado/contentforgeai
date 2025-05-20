@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { suggestThemes } from '@/ai/flows/proactive-theme-planning';
-import { suggestHashtags } from '@/ai/flows/smart-hashtag-suggestions'; // Renamed import for clarity if needed
+import { suggestHashtags } from '@/ai/flows/smart-hashtag-suggestions';
 import { 
   getStoredSettings, 
   addThemeSuggestion, 
@@ -23,7 +23,7 @@ import {
   addManualReferenceToTheme,
   deleteManualReferenceFromTheme,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, Search, FileText, CheckSquare, Square, MessageSquare, Tags } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags } from 'lucide-react';
 import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -123,7 +123,7 @@ export function ThemePlannerClient() {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
     }
-    setCurrentSettings(freshSettings);
+    setCurrentSettings(freshSettings); // Ensure currentSettings is up-to-date for the call
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
     try {
@@ -132,7 +132,7 @@ export function ThemePlannerClient() {
         numSuggestions: data.numSuggestions,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
       });
-      setGeneratedThemesList(result.themes); // This will now include keywords
+      setGeneratedThemesList(result.themes);
       toast({ title: "Themes Suggested!", description: "AI has generated theme ideas for your topic." });
     } catch (error) {
       console.error("Theme suggestion error:", error);
@@ -148,24 +148,23 @@ export function ThemePlannerClient() {
       userInputTopic: currentUserInputTopic,
       title: theme.title,
       description: theme.description,
-      keywords: theme.keywords, // Save initial keywords
+      keywords: theme.keywords,
       generatedAt: new Date().toISOString(),
       manualReferences: [],
     };
     addThemeSuggestion(newSuggestion);
-    refreshStoredThemes();
+    refreshStoredThemes(); // This updates storedThemeSuggestions state
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
 
   const handleDeleteTheme = useCallback((id: string) => {
     deleteThemeSuggestionById(id);
-    // Also clear any transient suggested keywords for this theme
     setSuggestedKeywordsMap(prev => {
       const newMap = {...prev};
       delete newMap[id];
       return newMap;
     });
-    refreshStoredThemes(); // This calls setStoredThemeSuggestions which should trigger re-render
+    refreshStoredThemes();
     toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
   }, [toast, refreshStoredThemes]);
 
@@ -188,7 +187,9 @@ export function ThemePlannerClient() {
     refreshStoredThemes();
     toast({ title: "Manual Reference Added", description: "Your reference has been saved."});
     manualRefForm.reset({ title: "", content: ""});
-    setCurrentThemeForManualRef(null); // Close dialog
+    // Close the dialog after submit by resetting currentThemeForManualRef
+    // This assumes Dialog's open state is controlled by currentThemeForManualRef being non-null
+    setCurrentThemeForManualRef(null); 
   };
 
   const handleDeleteManualRef = useCallback((themeId: string, refId: string) => {
@@ -200,7 +201,7 @@ export function ThemePlannerClient() {
     });
     refreshStoredThemes();
     toast({ title: "Manual Reference Deleted", description: "The manual reference has been removed." });
-  }, [refreshStoredThemes]);
+  }, [refreshStoredThemes]); // Added refreshStoredThemes
 
   const toggleManualReferenceSelection = (themeId: string, refId: string) => {
     setSelectedManualReferences(prev => {
@@ -220,7 +221,7 @@ export function ThemePlannerClient() {
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
-        platform: 'general' as any, // Use a generic platform type or adapt flow
+        platform: 'general', // Now a valid platform
       });
       setSuggestedKeywordsMap(prev => ({...prev, [theme.id]: result.hashtags }));
       toast({ title: "Keywords Suggested!", description: "AI has suggested additional keywords/hashtags." });
@@ -234,16 +235,16 @@ export function ThemePlannerClient() {
 
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
-    const selectedManualRefs = (theme.manualReferences || [])
+    const selectedManualRefsContents = (theme.manualReferences || [])
       .filter(ref => selectedManualReferences[theme.id]?.[ref.id])
       .map(ref => ref.content);
 
     const queryParams = new URLSearchParams();
     queryParams.append('title', theme.title);
-    queryParams.append('topic', theme.description); // Theme description becomes the initial topic/brief
+    queryParams.append('topic', theme.description);
     
-    if (selectedManualRefs.length > 0) {
-      queryParams.append('manualRefs', JSON.stringify(selectedManualRefs));
+    if (selectedManualRefsContents.length > 0) {
+      queryParams.append('manualRefs', JSON.stringify(selectedManualRefsContents));
     }
     
     router.push(`/content/new?${queryParams.toString()}`);
@@ -412,7 +413,7 @@ export function ThemePlannerClient() {
                 <div className="my-4 p-3 border-t border-dashed">
                    <div className="flex justify-between items-center mb-2">
                     <h5 className="text-md font-semibold flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Manual Notes/References</h5>
-                    <Dialog onOpenChange={(isOpen) => !isOpen && setCurrentThemeForManualRef(null)}>
+                    <Dialog onOpenChange={(isOpen) => { if (!isOpen) setCurrentThemeForManualRef(null); }}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" onClick={() => handleOpenManualRefModal(suggestion)}>
                           <PlusCircle className="mr-2 h-4 w-4" /> Add Note
@@ -469,7 +470,7 @@ export function ThemePlannerClient() {
                                 onCheckedChange={() => toggleManualReferenceSelection(suggestion.id, ref.id)}
                                 className="mr-3"
                             />
-                            <UiLabel htmlFor={`manual-${suggestion.id}-${ref.id}`} className="flex-1">
+                            <UiLabel htmlFor={`manual-${suggestion.id}-${ref.id}`} className="flex-1 cursor-pointer">
                                 {ref.title && <h6 className="font-medium text-sm">{ref.title}</h6>}
                             </UiLabel>
                             <AlertDialog>
@@ -485,7 +486,7 @@ export function ThemePlannerClient() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteManualRef(suggestion.id, ref.id)} className="bg-destructive">Delete</AlertDialogAction>
+                                  <AlertDialogAction onClick={() => handleDeleteManualRef(suggestion.id, ref.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
