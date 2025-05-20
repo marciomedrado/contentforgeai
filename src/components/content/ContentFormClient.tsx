@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -58,7 +59,7 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
       title: '',
       platform: 'Wordpress',
       topic: '',
-      wordCount: undefined,
+      wordCount: undefined, // This is fine for RHF state
       imagePromptFrequency: DEFAULT_IMAGE_PROMPT_FREQUENCY,
     },
   });
@@ -282,7 +283,23 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
                 <FormItem>
                   <FormLabel className="flex items-center"><FileText className="mr-2 h-4 w-4 text-muted-foreground" />Approximate Word Count (Optional)</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 500" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || undefined)} />
+                    <Input
+                      type="number"
+                      placeholder="e.g., 500"
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      value={field.value ?? ''} // Ensure input's value prop is never undefined
+                      onChange={e => {
+                        const textValue = e.target.value;
+                        if (textValue === '') {
+                          field.onChange(undefined); // Update RHF state to undefined for Zod optional
+                        } else {
+                          // Let Zod handle coercion from number string / NaN from parseInt
+                          field.onChange(parseInt(textValue, 10)); 
+                        }
+                      }}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -371,3 +388,4 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
     </Form>
   );
 }
+
