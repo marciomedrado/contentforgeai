@@ -91,8 +91,7 @@ export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
   if (!themes.some(t => t.userInputTopic === theme.userInputTopic && t.title === theme.title && t.description === theme.description)) {
-    // Initialize suggestedKeywords if not present
-    const themeToSave = { ...theme, suggestedKeywords: theme.suggestedKeywords || [] };
+    const themeToSave = { ...theme, suggestedKeywords: theme.suggestedKeywords || [], manualReferences: theme.manualReferences || [] };
     saveStoredThemeSuggestions([themeToSave, ...themes]);
   }
 };
@@ -158,6 +157,18 @@ export const saveStoredSummaries = (items: SummarizationItem[]): void => {
 export const addSummarizationItem = (item: SummarizationItem): void => {
   const items = getStoredSummaries();
   saveStoredSummaries([item, ...items]);
+};
+
+export const updateSummarizationItem = (updatedItem: SummarizationItem): void => {
+  let items = getStoredSummaries();
+  items = items.map(item => item.id === updatedItem.id ? updatedItem : item);
+  saveStoredSummaries(items);
+};
+
+export const deleteSummarizationItemById = (id: string): void => {
+  let items = getStoredSummaries();
+  items = items.filter(item => item.id !== id);
+  saveStoredSummaries(items);
 };
 
 export const clearAllSummaries = (): void => {
