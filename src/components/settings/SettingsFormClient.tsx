@@ -1,0 +1,97 @@
+"use client";
+
+import { useEffect } from 'react';
+import { useForm, SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import type { AppSettings } from '@/lib/types';
+import { getStoredSettings, saveStoredSettings } from '@/lib/storageService';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { useToast } from '@/hooks/use-toast';
+import { Save } from 'lucide-react';
+
+const settingsFormSchema = z.object({
+  openAIKey: z.string().min(1, "OpenAI API Key is required."),
+  openAIAgentId: z.string().optional(),
+});
+
+type SettingsFormData = z.infer<typeof settingsFormSchema>;
+
+export function SettingsFormClient() {
+  const { toast } = useToast();
+  const form = useForm<SettingsFormData>({
+    resolver: zodResolver(settingsFormSchema),
+    defaultValues: {
+      openAIKey: '',
+      openAIAgentId: '',
+    },
+  });
+
+  useEffect(() => {
+    const storedSettings = getStoredSettings();
+    if (storedSettings) {
+      form.reset(storedSettings);
+    }
+  }, [form]);
+
+  const onSubmit: SubmitHandler<SettingsFormData> = (data) => {
+    saveStoredSettings(data);
+    toast({
+      title: "Settings Saved",
+      description: "Your API settings have been updated.",
+    });
+  };
+
+  return (
+    <Card className="max-w-2xl mx-auto">
+      <CardHeader>
+        <CardTitle>API Settings</CardTitle>
+        <CardDescription>Configure your OpenAI API Key and optional Agent ID here. If no Agent ID is provided, "gpt-4o-mini" will be used by default by the AI flows.</CardDescription>
+      </CardHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent className="space-y-6">
+            <FormField
+              control={form.control}
+              name="openAIKey"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel htmlFor="openAIKey">OpenAI API Key</FormLabel>
+                  <FormControl>
+                    <Input id="openAIKey" type="password" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="openAIAgentId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel htmlFor="openAIAgentId">OpenAI Agent ID (Optional)</FormLabel>
+                  <FormControl>
+                    <Input id="openAIAgentId" placeholder="asst_xxxxxxxxxxxxxxxxxxxxxx" {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    If you have a custom OpenAI Assistant ID, enter it here.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+          <CardFooter>
+            <Button type="submit">
+              <Save className="mr-2 h-4 w-4" /> Save Settings
+            </Button>
+          </CardFooter>
+        </form>
+      </Form>
+    </Card>
+  );
+}
