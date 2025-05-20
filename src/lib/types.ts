@@ -20,6 +20,7 @@ export interface ContentItem {
 export interface AppSettings {
   openAIKey: string;
   openAIAgentId?: string;
+  outputLanguage?: string; // e.g., 'en', 'pt', 'es'
 }
 
 export interface ThemeSuggestion {

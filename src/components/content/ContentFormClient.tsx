@@ -6,7 +6,7 @@ import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { ContentItem, Platform, AppSettings } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_IMAGE_PROMPT_FREQUENCY } from '@/lib/constants';
+import { PLATFORM_OPTIONS, DEFAULT_IMAGE_PROMPT_FREQUENCY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,7 +48,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
   const [imagePrompts, setImagePrompts] = useState<string[]>([]);
   const [suggestedHashtags, setSuggestedHashtags] = useState<string[]>([]);
   
-  const [currentSettings, setCurrentSettings] = useState<AppSettings | null>(null);
+  const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings()); // Initialize with stored settings
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
 
   const form = useForm<ContentFormData>({
@@ -63,7 +63,15 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
   });
 
   useEffect(() => {
-    setCurrentSettings(getStoredSettings());
+    // Update currentSettings if they change in localStorage (e.g. user changes them in another tab)
+    // This is a basic way, more robust solutions might use storage events or context
+    const handleStorageChange = () => {
+      setCurrentSettings(getStoredSettings());
+    };
+    window.addEventListener('storage', handleStorageChange);
+    
+    setCurrentSettings(getStoredSettings()); // Ensure latest settings on mount
+
     if (contentId) {
       const content = getContentItemById(contentId);
       if (content) {
@@ -88,6 +96,9 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
          form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
       }
     }
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [contentId, initialTopic, form, router, toast]);
 
   const selectedPlatform = form.watch('platform');
@@ -98,7 +109,8 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
-    if (!currentSettings?.openAIKey) {
+    const freshSettings = getStoredSettings(); // Get latest settings before generation
+    if (!freshSettings?.openAIKey) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
     }
@@ -109,8 +121,9 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
         platform: platform as Platform,
         topic,
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
-        apiKey: currentSettings.openAIKey, // This is part of the schema, though Genkit might use env vars for Google AI
-        agentId: currentSettings.openAIAgentId || undefined,
+        apiKey: freshSettings.openAIKey,
+        agentId: freshSettings.openAIAgentId || undefined,
+        outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
@@ -132,7 +145,8 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
-     if (!currentSettings?.openAIKey) {
+    const freshSettings = getStoredSettings(); // Get latest settings
+     if (!freshSettings?.openAIKey) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
     }
@@ -287,7 +301,13 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
               {selectedPlatform === 'Wordpress' ? (
                 <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} />
               ) : (
-                <Textarea value={generatedContent} onChange={(e) => setGeneratedContent(e.target.value)} rows={10} placeholder="Generated content will appear here..." />
+                <Textarea 
+                  value={generatedContent} 
+                  onChange={(e) => setGeneratedContent(e.target.value)} 
+                  rows={15} // Increased rows for more space
+                  placeholder="Generated content will appear here..." 
+                  className="min-h-[200px]" // Ensure a minimum height
+                />
               )}
             </CardContent>
           </Card>

@@ -6,17 +6,20 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { AppSettings } from '@/lib/types';
 import { getStoredSettings, saveStoredSettings } from '@/lib/storageService';
+import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Save } from 'lucide-react';
+import { Save, LanguagesIcon } from 'lucide-react';
 
 const settingsFormSchema = z.object({
   openAIKey: z.string().min(1, "OpenAI API Key is required."),
   openAIAgentId: z.string().optional(),
+  outputLanguage: z.string().optional().default(DEFAULT_OUTPUT_LANGUAGE),
 });
 
 type SettingsFormData = z.infer<typeof settingsFormSchema>;
@@ -28,13 +31,18 @@ export function SettingsFormClient() {
     defaultValues: {
       openAIKey: '',
       openAIAgentId: '',
+      outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     },
   });
 
   useEffect(() => {
     const storedSettings = getStoredSettings();
     if (storedSettings) {
-      form.reset(storedSettings);
+      form.reset({
+        openAIKey: storedSettings.openAIKey || '',
+        openAIAgentId: storedSettings.openAIAgentId || '',
+        outputLanguage: storedSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+      });
     }
   }, [form]);
 
@@ -49,8 +57,8 @@ export function SettingsFormClient() {
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle>API Settings</CardTitle>
-        <CardDescription>Configure your OpenAI API Key and optional Agent ID here. If no Agent ID is provided, "gpt-4o-mini" will be used by default by the AI flows.</CardDescription>
+        <CardTitle>API & Language Settings</CardTitle>
+        <CardDescription>Configure your OpenAI API Key, optional Agent ID, and default content language.</CardDescription>
       </CardHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -78,7 +86,35 @@ export function SettingsFormClient() {
                     <Input id="openAIAgentId" placeholder="asst_xxxxxxxxxxxxxxxxxxxxxx" {...field} />
                   </FormControl>
                   <FormDescription>
-                    If you have a custom OpenAI Assistant ID, enter it here.
+                    If you have a custom OpenAI Assistant ID, enter it here. Otherwise, default models will be used.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="outputLanguage"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel htmlFor="outputLanguage" className="flex items-center">
+                    <LanguagesIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                    Default Output Language
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger id="outputLanguage">
+                        <SelectValue placeholder="Select a language" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {LANGUAGE_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Choose the default language for AI-generated content.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

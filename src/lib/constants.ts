@@ -10,7 +10,7 @@ export const NAV_LINKS = [
   { href: "/", label: "Dashboard", iconName: "LayoutDashboard" },
   { href: "/content/new", label: "Create Content", iconName: "PlusCircle" },
   { href: "/themes", label: "Theme Planner", iconName: "Lightbulb" },
-  { href: "/settings", label: "Settings", iconName: "SettingsIcon" }, // Changed from Settings to SettingsIcon for clarity with lucide
+  { href: "/settings", label: "Settings", iconName: "SettingsIcon" },
 ];
 
 export const CONTENT_STATUS_OPTIONS: { value: string, label: string }[] = [
@@ -24,3 +24,14 @@ export const PLATFORM_OPTIONS: { value: Platform, label: string }[] = [
   { value: "Instagram", label: "Instagram" },
   { value: "Facebook", label: "Facebook" },
 ];
+
+export const LANGUAGE_OPTIONS: { value: string, label: string }[] = [
+  { value: 'en', label: 'English' },
+  { value: 'pt', label: 'Português (Portuguese)' },
+  { value: 'es', label: 'Español (Spanish)' },
+  { value: 'fr', label: 'Français (French)' },
+  { value: 'de', label: 'Deutsch (German)' },
+  // Add more languages as needed
+];
+
+export const DEFAULT_OUTPUT_LANGUAGE = 'en';

@@ -1,4 +1,5 @@
 import type { ContentItem, AppSettings, ThemeSuggestion } from './types';
+import { DEFAULT_OUTPUT_LANGUAGE } from './constants';
 
 const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';
 const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
@@ -57,7 +58,12 @@ export const deleteContentItem = (id: string): void => {
 
 // App Settings
 export const getStoredSettings = (): AppSettings => {
-  return safeLocalStorageGet<AppSettings>(SETTINGS_STORAGE_KEY, { openAIKey: '' });
+  const defaultSettings: AppSettings = {
+    openAIKey: '',
+    outputLanguage: DEFAULT_OUTPUT_LANGUAGE, // Default language
+  };
+  const stored = safeLocalStorageGet<Partial<AppSettings>>(SETTINGS_STORAGE_KEY, {});
+  return { ...defaultSettings, ...stored };
 };
 
 export const saveStoredSettings = (settings: AppSettings): void => {
