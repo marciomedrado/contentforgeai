@@ -19,13 +19,14 @@ import { useToast } from '@/hooks/use-toast';
 import { generateContentForPlatform } from '@/ai/flows/generate-content-for-platform';
 import { suggestHashtags as suggestHashtagsFlow } from '@/ai/flows/smart-hashtag-suggestions';
 import { getStoredSettings, addContentItem, updateContentItem, getContentItemById } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIcon, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const formSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
   platform: z.enum(["Wordpress", "Instagram", "Facebook"]),
   topic: z.string().min(10, "Topic must be at least 10 characters."),
+  wordCount: z.coerce.number().optional().describe("Approximate word count for the content."),
   imagePromptFrequency: z.number().optional(),
 });
 
@@ -33,9 +34,10 @@ type ContentFormData = z.infer<typeof formSchema>;
 
 interface ContentFormClientProps {
   contentId?: string; // For editing existing content
+  initialTopic?: string; // For pre-filling from theme planner
 }
 
-export function ContentFormClient({ contentId }: ContentFormClientProps) {
+export function ContentFormClient({ contentId, initialTopic }: ContentFormClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -55,6 +57,7 @@ export function ContentFormClient({ contentId }: ContentFormClientProps) {
       title: '',
       platform: 'Wordpress',
       topic: '',
+      wordCount: undefined,
       imagePromptFrequency: DEFAULT_IMAGE_PROMPT_FREQUENCY,
     },
   });
@@ -69,6 +72,7 @@ export function ContentFormClient({ contentId }: ContentFormClientProps) {
           title: content.title,
           platform: content.platform,
           topic: content.topic,
+          wordCount: content.wordCount,
           imagePromptFrequency: content.imagePromptFrequency || DEFAULT_IMAGE_PROMPT_FREQUENCY,
         });
         setGeneratedContent(content.content);
@@ -78,13 +82,18 @@ export function ContentFormClient({ contentId }: ContentFormClientProps) {
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
         router.push('/');
       }
+    } else if (initialTopic) {
+      form.setValue('topic', initialTopic);
+      if (!form.getValues('title')) {
+         form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
+      }
     }
-  }, [contentId, form, router, toast]);
+  }, [contentId, initialTopic, form, router, toast]);
 
   const selectedPlatform = form.watch('platform');
 
   const handleGenerateContent = async () => {
-    const { platform, topic } = form.getValues();
+    const { platform, topic, wordCount } = form.getValues();
     if (!topic) {
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
@@ -99,13 +108,11 @@ export function ContentFormClient({ contentId }: ContentFormClientProps) {
       const result = await generateContentForPlatform({
         platform: platform as Platform,
         topic,
-        apiKey: currentSettings.openAIKey,
+        wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
+        apiKey: currentSettings.openAIKey, // This is part of the schema, though Genkit might use env vars for Google AI
         agentId: currentSettings.openAIAgentId || undefined,
       });
       setGeneratedContent(result.content);
-      // The flow currently returns a single string for imagePrompt. Let's adapt.
-      // If it's Wordpress and content suggests multiple prompts, they'd be in the content.
-      // For now, using the single imagePrompt from the flow.
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
       setImagePrompts(prompts);
 
@@ -153,6 +160,7 @@ export function ContentFormClient({ contentId }: ContentFormClientProps) {
       topic: data.topic,
       content: generatedContent,
       imagePrompts: imagePrompts,
+      wordCount: data.wordCount && data.wordCount > 0 ? data.wordCount : undefined,
       imagePromptFrequency: data.platform === 'Wordpress' ? data.imagePromptFrequency : undefined,
       hashtags: suggestedHashtags,
       status: existingContent?.status || 'Draft',
@@ -243,6 +251,20 @@ export function ContentFormClient({ contentId }: ContentFormClientProps) {
                   <FormLabel>Topic / Main Idea</FormLabel>
                   <FormControl>
                     <Textarea placeholder="Describe the main topic or idea for the AI to generate content on..." {...field} rows={3} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="wordCount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center"><FileText className="mr-2 h-4 w-4 text-muted-foreground" />Approximate Word Count (Optional)</FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="e.g., 500" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || undefined)} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

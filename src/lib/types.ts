@@ -8,6 +8,7 @@ export interface ContentItem {
   platform: Platform;
   content: string; // HTML for Wordpress, text for others
   imagePrompts: string[];
+  wordCount?: number; // Approximate word count if specified during generation
   imagePromptFrequency?: number; // For Wordpress, default 200
   hashtags?: string[]; // For Instagram/Facebook
   status: ContentStatus;
