@@ -4,9 +4,20 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { FileText, Instagram, FacebookIcon, Edit3, Trash2, CalendarDays } from 'lucide-react'; 
+import { FileText, Instagram, FacebookIcon, Edit3, Trash2, CalendarDays, AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const PlatformIcon: React.FC<{ platform: Platform, className?: string }> = ({ platform, className }) => {
   const commonProps = { className: cn("h-5 w-5", className) };
@@ -53,7 +64,7 @@ export function ContentCard({ item, onDelete }: ContentCardProps) {
         )}
       </CardContent>
       <CardFooter className="flex justify-between items-center">
-        <Badge 
+        <Badge
           variant={item.status === 'Published' ? 'default' : item.status === 'Scheduled' ? 'outline' : 'secondary'}
           className={cn(
             item.status === 'Published' && 'bg-green-500/20 text-green-700 border-green-500/30',
@@ -70,13 +81,32 @@ export function ContentCard({ item, onDelete }: ContentCardProps) {
                <span className="sr-only">Edit content {item.title}</span>
             </Link>
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => onDelete(item.id)}>
-            <Trash2 className="h-4 w-4" />
-            <span className="sr-only">Delete content {item.title}</span>
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4" />
+                <span className="sr-only">Delete content {item.title}</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center">
+                   <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/> Are you absolutely sure?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the content item titled "{item.title}".
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDelete(item.id)} className="bg-destructive hover:bg-destructive/90">
+                  Yes, delete content
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </CardFooter>
     </Card>
   );
 }
-

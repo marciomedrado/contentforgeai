@@ -14,8 +14,19 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { suggestThemes } from '@/ai/flows/proactive-theme-planning';
 import { getStoredSettings, addThemeSuggestion, getStoredThemeSuggestions, deleteThemeSuggestionById } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2 } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle } from 'lucide-react';
 import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/constants';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const themePlannerSchema = z.object({
   topic: z.string().min(5, "Topic must be at least 5 characters."),
@@ -36,7 +47,7 @@ export function ThemePlannerClient() {
   const refreshStoredThemes = useCallback(() => {
     setStoredThemeSuggestions(getStoredThemeSuggestions());
   }, []);
-  
+
   const refreshSettings = useCallback(() => {
     setCurrentSettings(getStoredSettings());
   }, []);
@@ -70,14 +81,14 @@ export function ThemePlannerClient() {
   });
 
   const onSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
-    const freshSettings = getStoredSettings(); // Get latest settings
+    const freshSettings = getStoredSettings(); 
     if (!freshSettings?.openAIKey) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
     }
-    setCurrentSettings(freshSettings); // Update local state if needed
+    setCurrentSettings(freshSettings); 
     setIsLoading(true);
-    setCurrentUserInputTopic(data.topic); 
+    setCurrentUserInputTopic(data.topic);
     try {
       const result = await suggestThemes({
         topic: data.topic,
@@ -96,23 +107,20 @@ export function ThemePlannerClient() {
   const handleSaveTheme = (theme: Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic'>) => {
     const newSuggestion: ThemeSuggestion = {
       id: Date.now().toString(),
-      userInputTopic: currentUserInputTopic, 
+      userInputTopic: currentUserInputTopic,
       title: theme.title,
       description: theme.description,
       generatedAt: new Date().toISOString(),
     };
     addThemeSuggestion(newSuggestion);
-    setStoredThemeSuggestions(getStoredThemeSuggestions()); // Refresh list from storage
+    setStoredThemeSuggestions(getStoredThemeSuggestions()); 
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
-  
+
   const handleDeleteTheme = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this theme idea?")) {
-      deleteThemeSuggestionById(id);
-      // Directly update state after deletion
-      setStoredThemeSuggestions(getStoredThemeSuggestions()); 
-      toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
-    }
+    deleteThemeSuggestionById(id);
+    setStoredThemeSuggestions(getStoredThemeSuggestions());
+    toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
   };
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
@@ -213,14 +221,34 @@ export function ThemePlannerClient() {
                     <p className="text-sm text-muted-foreground break-words whitespace-pre-wrap">{suggestion.description}</p>
                     <p className="text-xs text-muted-foreground mt-1">Original topic: "{suggestion.userInputTopic}" (Saved: {new Date(suggestion.generatedAt).toLocaleDateString()})</p>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="flex gap-2 flex-shrink-0 items-center">
                     <Button variant="ghost" size="sm" onClick={() => handleCreateContentFromTheme(suggestion)}>
                        Create Content
                     </Button>
-                    <Button variant="destructive" size="icon" onClick={() => handleDeleteTheme(suggestion.id)}>
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Delete theme {suggestion.title}</span>
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="icon">
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Delete theme {suggestion.title}</span>
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                           <AlertDialogTitle className="flex items-center">
+                            <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/> Are you absolutely sure?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the theme idea titled "{suggestion.title}".
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteTheme(suggestion.id)} className="bg-destructive hover:bg-destructive/90">
+                            Yes, delete theme
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </li>
               ))}
@@ -231,4 +259,3 @@ export function ThemePlannerClient() {
     </div>
   );
 }
-
