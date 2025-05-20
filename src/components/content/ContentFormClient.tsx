@@ -7,7 +7,7 @@ import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { ContentItem, Platform, AppSettings } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_IMAGE_PROMPT_FREQUENCY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,7 +29,7 @@ const formSchema = z.object({
   platform: z.enum(["Wordpress", "Instagram", "Facebook"]),
   topic: z.string().min(10, "Topic must be at least 10 characters."),
   wordCount: z.coerce.number().optional().describe("Approximate word count for the content."),
-  imagePromptFrequency: z.number().optional(),
+  numberOfImages: z.coerce.number().min(0).optional().describe("Desired number of images for WordPress content."),
 });
 
 type ContentFormData = z.infer<typeof formSchema>;
@@ -41,10 +41,10 @@ interface ContentFormClientProps {
   initialManualReferenceTexts?: string[];
 }
 
-export function ContentFormClient({ 
-  contentId, 
-  initialTitle, 
-  initialTopic, 
+export function ContentFormClient({
+  contentId,
+  initialTitle,
+  initialTopic,
   initialManualReferenceTexts,
 }: ContentFormClientProps) {
   const router = useRouter();
@@ -52,12 +52,12 @@ export function ContentFormClient({
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSuggestingHashtags, setIsSuggestingHashtags] = useState(false);
-  
+
   const [generatedContent, setGeneratedContent] = useState<string>('');
   const [imagePrompts, setImagePrompts] = useState<string[]>([]);
   const [suggestedHashtags, setSuggestedHashtags] = useState<string[]>([]);
-  
-  const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings()); 
+
+  const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings());
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
 
   const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
@@ -70,14 +70,14 @@ export function ContentFormClient({
       platform: 'Wordpress',
       topic: '',
       wordCount: undefined,
-      imagePromptFrequency: DEFAULT_IMAGE_PROMPT_FREQUENCY,
+      numberOfImages: DEFAULT_NUMBER_OF_IMAGES,
     },
   });
 
   useEffect(() => {
     const handleStorageChange = () => setCurrentSettings(getStoredSettings());
     window.addEventListener('storage', handleStorageChange);
-    setCurrentSettings(getStoredSettings()); 
+    setCurrentSettings(getStoredSettings());
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -88,7 +88,7 @@ export function ContentFormClient({
           platform: content.platform,
           topic: content.topic,
           wordCount: content.wordCount,
-          imagePromptFrequency: content.imagePromptFrequency || DEFAULT_IMAGE_PROMPT_FREQUENCY,
+          numberOfImages: content.numberOfImagesRequested === undefined ? DEFAULT_NUMBER_OF_IMAGES : content.numberOfImagesRequested,
         });
         setGeneratedContent(content.content);
         setImagePrompts(content.imagePrompts);
@@ -112,16 +112,17 @@ export function ContentFormClient({
   const selectedPlatform = form.watch('platform');
 
   const handleGenerateContent = async () => {
-    const { platform, topic, wordCount } = form.getValues();
+    const { platform, topic, wordCount, numberOfImages } = form.getValues();
     if (!topic) {
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
-    const freshSettings = getStoredSettings(); 
-    if (!freshSettings?.openAIKey) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
-      return;
-    }
+    const freshSettings = getStoredSettings();
+    // API key is now handled by .env
+    // if (!freshSettings?.openAIKey) {
+    //   toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
+    //   return;
+    // }
 
     setIsLoadingAi(true);
     try {
@@ -129,8 +130,9 @@ export function ContentFormClient({
         platform: platform as Platform,
         topic,
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
-        apiKey: freshSettings.openAIKey,
-        agentId: freshSettings.openAIAgentId || undefined,
+        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined, // Pass only for WP
+        // apiKey: freshSettings.openAIKey, // API key is now from .env
+        openAIAgentId: freshSettings.openAIAgentId || undefined,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
       });
@@ -144,7 +146,7 @@ export function ContentFormClient({
       toast({ title: "Content Generated!", description: "AI has generated content and image prompts." });
     } catch (error) {
       console.error("AI content generation error:", error);
-      toast({ title: "AI Error", description: "Failed to generate content. Check console for details.", variant: "destructive" });
+      toast({ title: "AI Error", description: `Failed to generate content. Check console for details. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     setIsLoadingAi(false);
   };
@@ -154,11 +156,12 @@ export function ContentFormClient({
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
-    const freshSettings = getStoredSettings();
-     if (!freshSettings?.openAIKey) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
-      return;
-    }
+    // API key is now from .env
+    // const freshSettings = getStoredSettings();
+    //  if (!freshSettings?.openAIKey) {
+    //   toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
+    //   return;
+    // }
     setIsSuggestingHashtags(true);
     try {
       const result = await suggestHashtagsFlow({
@@ -184,12 +187,12 @@ export function ContentFormClient({
       content: generatedContent,
       imagePrompts: imagePrompts,
       wordCount: data.wordCount && data.wordCount > 0 ? data.wordCount : undefined,
-      imagePromptFrequency: data.platform === 'Wordpress' ? data.imagePromptFrequency : undefined,
+      numberOfImagesRequested: data.platform === 'Wordpress' ? data.numberOfImages : undefined,
       hashtags: suggestedHashtags,
       status: existingContent?.status || 'Draft',
       createdAt: existingContent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(content => ({content})) : undefined,
+      manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(text => ({content: text})) : undefined,
     };
 
     if (existingContent) {
@@ -199,9 +202,9 @@ export function ContentFormClient({
       addContentItem(newContentItem);
       toast({ title: "Content Saved", description: "Your content has been saved as a draft." });
     }
-    
+
     setIsSaving(false);
-    router.push('/'); 
+    router.push('/');
   };
 
   return (
@@ -220,7 +223,7 @@ export function ContentFormClient({
                 <FormItem>
                   <FormLabel>Title</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter a title for your content" {...field} />
+                    <Input placeholder="Enter a title for your content" {...field} suppressHydrationWarning={true} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -231,7 +234,7 @@ export function ContentFormClient({
               <FormField
                 control={form.control}
                 name="platform"
-                render={({ field }) => ( 
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel>Platform</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -253,13 +256,25 @@ export function ContentFormClient({
               {selectedPlatform === 'Wordpress' && (
                 <FormField
                   control={form.control}
-                  name="imagePromptFrequency"
-                  render={({ field }) => ( 
+                  name="numberOfImages"
+                  render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Image Prompt Frequency (words)</FormLabel>
+                      <FormLabel>Número de Imagens (WordPress)</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || 0)} />
+                        <Input
+                          type="number"
+                          min="0"
+                           placeholder={`Padrão: ${DEFAULT_NUMBER_OF_IMAGES}`}
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            field.onChange(val === '' ? undefined : parseInt(val, 10));
+                          }}
+                          suppressHydrationWarning={true}
+                        />
                       </FormControl>
+                       <FormDescription>0 para um prompt geral, &gt;0 para imagens embutidas.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -274,7 +289,7 @@ export function ContentFormClient({
                 <FormItem>
                   <FormLabel>Topic / Main Idea / Brief</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Describe the main topic, idea, or paste the brief for the AI to generate content on..." {...field} rows={4} />
+                    <Textarea placeholder="Describe the main topic, idea, or paste the brief for the AI to generate content on..." {...field} rows={4} suppressHydrationWarning={true} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -295,18 +310,19 @@ export function ContentFormClient({
                       value={field.value ?? ''}
                       onChange={e => {
                         const textValue = e.target.value;
-                        field.onChange(textValue === '' ? undefined : parseInt(textValue, 10)); 
+                        field.onChange(textValue === '' ? undefined : parseInt(textValue, 10));
                       }}
+                      suppressHydrationWarning={true}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
+
             {manualReferencesForDisplay.length > 0 && (
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="manual-references-accordion">
+              <Accordion type="single" collapsible className="w-full" defaultValue="manual-references-accordion-item">
+                <AccordionItem value="manual-references-accordion-item">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
@@ -318,8 +334,8 @@ export function ContentFormClient({
                       <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
                       <ul className="list-disc list-inside space-y-1 pl-2">
                         {manualReferencesForDisplay.map((text, index) => (
-                          <li key={`manual-${index}`} className="text-xs text-muted-foreground italic whitespace-pre-wrap">
-                            {text.length > 100 ? `${text.substring(0,100)}...` : text}
+                          <li key={`manual-ref-display-${index}`} className="text-xs text-muted-foreground italic whitespace-pre-wrap">
+                            {text}
                           </li>
                         ))}
                       </ul>
@@ -345,12 +361,12 @@ export function ContentFormClient({
               {selectedPlatform === 'Wordpress' ? (
                 <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} />
               ) : (
-                <Textarea 
-                  value={generatedContent} 
-                  onChange={(e) => setGeneratedContent(e.target.value)} 
-                  rows={15} 
-                  placeholder="Generated content will appear here..." 
-                  className="min-h-[300px]" 
+                <Textarea
+                  value={generatedContent}
+                  onChange={(e) => setGeneratedContent(e.target.value)}
+                  rows={15}
+                  placeholder="Generated content will appear here..."
+                  className="min-h-[300px]"
                   suppressHydrationWarning={true}
                 />
               )}
@@ -381,7 +397,7 @@ export function ContentFormClient({
             </CardContent>
           </Card>
         )}
-        
+
         {(selectedPlatform === 'Instagram' || selectedPlatform === 'Facebook') && generatedContent && (
           <Card>
             <CardHeader>
@@ -413,4 +429,3 @@ export function ContentFormClient({
     </Form>
   );
 }
-

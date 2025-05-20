@@ -15,7 +15,7 @@ export interface ThemeSuggestion {
   title: string;
   description: string;
   keywords?: string[]; // Keywords generated during initial theme suggestion
-  suggestedKeywords?: string[]; // AI-generated keywords/long-tail search terms
+  suggestedKeywords?: string[]; // AI-generated keywords/long-tail search terms for "general" platform
   generatedAt: string;
   manualReferences?: ManualReferenceItem[];
 }
@@ -26,9 +26,9 @@ export interface ContentItem {
   topic: string;
   platform: Platform;
   content: string;
-  imagePrompts: string[];
+  imagePrompts: string[]; // Parsed prompts from AI, especially if multiple for WordPress
   wordCount?: number;
-  imagePromptFrequency?: number;
+  numberOfImagesRequested?: number; // Replaces imagePromptFrequency
   hashtags?: string[];
   status: ContentStatus;
   createdAt: string;
@@ -38,7 +38,7 @@ export interface ContentItem {
 }
 
 export interface AppSettings {
-  openAIKey: string; // Note: Must be set in .env for Genkit flows
+  openAIKey: string;
   openAIAgentId?: string;
   outputLanguage?: string;
   perplexityApiKey?: string;
