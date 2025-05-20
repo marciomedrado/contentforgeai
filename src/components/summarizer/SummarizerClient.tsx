@@ -20,11 +20,12 @@ import {
   deleteSummarizationItemById, 
   clearAllSummaries,
   getStoredThemeSuggestions,
-  addManualReferenceToTheme
+  addManualReferenceToTheme,
+  getStoredSettings // Added missing import
 } from '@/lib/storageService';
-import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem } from '@/lib/types';
-import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon, XIcon, AlertTriangle } from 'lucide-react';
-import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY } from '@/lib/constants';
+import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings } from '@/lib/types';
+import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle } from 'lucide-react'; // Renamed SettingsIcon to avoid conflict
+import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/constants';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -72,7 +73,7 @@ export function SummarizerClient() {
     resolver: zodResolver(summarizerFormSchema),
     defaultValues: {
       inputText: '',
-      outputLanguage: getStoredSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+      outputLanguage: (getStoredSettings() as AppSettings)?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
     },
   });
 
@@ -80,32 +81,32 @@ export function SummarizerClient() {
     setSavedSummaries(getStoredSummaries());
   }, []);
   
-  const getSettings = useCallback(() => {
+  const getCurrentSettings = useCallback(() => {
     if (typeof window !== 'undefined') {
       return getStoredSettings();
     }
-    return { outputLanguage: DEFAULT_OUTPUT_LANGUAGE };
+    return { outputLanguage: DEFAULT_OUTPUT_LANGUAGE } as AppSettings;
   }, []);
 
 
   useEffect(() => {
     refreshSummaries();
-    const currentLanguage = getSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
-    form.reset({ inputText: '', outputLanguage: currentLanguage });
+    const currentLanguage = getCurrentSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
+    // form.reset({ inputText: '', outputLanguage: currentLanguage }); // Keep this reset for later if needed
 
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SUMMARIES_STORAGE_KEY) {
         refreshSummaries();
       }
-      if (event.key === 'contentForgeAi_appSettings') {
-         const newSettings = getSettings();
+      if (event.key === SETTINGS_STORAGE_KEY) { // Ensure this key matches your actual settings key
+         const newSettings = getCurrentSettings();
          form.setValue('outputLanguage', newSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshSummaries, form, getSettings]);
+  }, [refreshSummaries, form, getCurrentSettings]);
 
   const onSummarizeSubmit: SubmitHandler<SummarizerFormData> = async (data) => {
     setIsLoading(true);
@@ -154,8 +155,8 @@ export function SummarizerClient() {
       toast({ title: "Summary Saved!", description: "Your summary has been saved." });
     }
     refreshSummaries();
-    form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') }); // Clear input, keep language
-    setSummaryOutput(''); // Clear output
+    form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') }); 
+    setSummaryOutput(''); 
   };
 
   const handleEditSummary = (summary: SummarizationItem) => {
@@ -263,7 +264,7 @@ export function SummarizerClient() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel htmlFor="outputLanguage" className="flex items-center">
-                      <SettingsIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                      <SettingsIconLucide className="mr-2 h-4 w-4 text-muted-foreground" />
                       Summary Language
                     </FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
@@ -464,5 +465,3 @@ export function SummarizerClient() {
     </div>
   );
 }
-
-    
