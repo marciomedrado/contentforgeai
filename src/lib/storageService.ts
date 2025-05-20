@@ -1,6 +1,6 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem } from './types';
-import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY } from './constants';
+import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem } from './types';
+import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY, SUMMARIES_STORAGE_KEY } from './constants';
 
 // Helper to safely interact with localStorage
 const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
@@ -19,7 +19,7 @@ const safeLocalStorageSet = <T,>(key: string, value: T): void => {
   try {
     const oldValue = window.localStorage.getItem(key);
     window.localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new StorageEvent('storage', { 
+    window.dispatchEvent(new StorageEvent('storage', {
       key: key,
       oldValue: oldValue,
       newValue: JSON.stringify(value),
@@ -67,8 +67,8 @@ export const clearAllContentItems = (): void => {
 // App Settings
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
-    openAIKey: '',
-    outputLanguage: DEFAULT_OUTPUT_LANGUAGE, 
+    openAIKey: '', // Primarily for display, actual key from .env
+    outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     perplexityApiKey: '',
   };
   const stored = safeLocalStorageGet<Partial<AppSettings>>(SETTINGS_STORAGE_KEY, {});
@@ -91,7 +91,9 @@ export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
   if (!themes.some(t => t.userInputTopic === theme.userInputTopic && t.title === theme.title && t.description === theme.description)) {
-    saveStoredThemeSuggestions([theme, ...themes]);
+    // Initialize suggestedKeywords if not present
+    const themeToSave = { ...theme, suggestedKeywords: theme.suggestedKeywords || [] };
+    saveStoredThemeSuggestions([themeToSave, ...themes]);
   }
 };
 
@@ -125,7 +127,47 @@ export const deleteManualReferenceFromTheme = (themeId: string, referenceId: str
   }
 };
 
+export const updateThemeWithSuggestedKeywords = (themeId: string, keywords: string[]): void => {
+  const themes = getStoredThemeSuggestions();
+  const themeIndex = themes.findIndex(t => t.id === themeId);
+  if (themeIndex > -1) {
+    themes[themeIndex].suggestedKeywords = keywords;
+    saveStoredThemeSuggestions(themes);
+  }
+};
+
+export const deleteKeywordFromTheme = (themeId: string, keywordToDelete: string): void => {
+  const themes = getStoredThemeSuggestions();
+  const themeIndex = themes.findIndex(t => t.id === themeId);
+  if (themeIndex > -1 && themes[themeIndex].suggestedKeywords) {
+    themes[themeIndex].suggestedKeywords = themes[themeIndex].suggestedKeywords?.filter(kw => kw !== keywordToDelete);
+    saveStoredThemeSuggestions(themes);
+  }
+};
+
+
+// Summarization Items
+export const getStoredSummaries = (): SummarizationItem[] => {
+  return safeLocalStorageGet<SummarizationItem[]>(SUMMARIES_STORAGE_KEY, []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+export const saveStoredSummaries = (items: SummarizationItem[]): void => {
+  safeLocalStorageSet<SummarizationItem[]>(SUMMARIES_STORAGE_KEY, items.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+};
+
+export const addSummarizationItem = (item: SummarizationItem): void => {
+  const items = getStoredSummaries();
+  saveStoredSummaries([item, ...items]);
+};
+
+export const clearAllSummaries = (): void => {
+  safeLocalStorageSet<SummarizationItem[]>(SUMMARIES_STORAGE_KEY, []);
+};
+
+
+// General Data Clearing
 export const clearAllData = (): void => {
   clearAllContentItems();
   clearAllThemeSuggestions();
+  clearAllSummaries();
 };

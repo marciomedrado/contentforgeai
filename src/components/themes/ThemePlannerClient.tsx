@@ -15,15 +15,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { suggestThemes } from '@/ai/flows/proactive-theme-planning';
 import { suggestHashtags } from '@/ai/flows/smart-hashtag-suggestions';
-import { 
-  getStoredSettings, 
-  addThemeSuggestion, 
-  getStoredThemeSuggestions, 
+import {
+  getStoredSettings,
+  addThemeSuggestion,
+  getStoredThemeSuggestions,
   deleteThemeSuggestionById,
   addManualReferenceToTheme,
   deleteManualReferenceFromTheme,
+  updateThemeWithSuggestedKeywords,
+  deleteKeywordFromTheme,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon } from 'lucide-react';
 import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -73,18 +75,16 @@ export function ThemePlannerClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoadingThemes, setIsLoadingThemes] = useState(false);
-  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'>[]>([]);
-  
+  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences' | 'suggestedKeywords'>[]>([]);
+
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings());
   const [storedThemeSuggestions, setStoredThemeSuggestions] = useState<ThemeSuggestion[]>([]);
   const [currentUserInputTopic, setCurrentUserInputTopic] = useState<string>("");
 
   const [selectedManualReferences, setSelectedManualReferences] = useState<Record<string, Record<string, boolean>>>({});
   const [currentThemeForManualRef, setCurrentThemeForManualRef] = useState<ThemeSuggestion | null>(null);
-  
-  const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null); // themeId or null
-  const [suggestedKeywordsMap, setSuggestedKeywordsMap] = useState<Record<string, string[]>>({}); // themeId -> keywords[]
 
+  const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null); // themeId or null
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -118,12 +118,12 @@ export function ThemePlannerClient() {
   });
 
   const onThemeSuggestSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
-    const freshSettings = getStoredSettings();
-    if (!freshSettings?.openAIKey) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
+    const freshSettings = getStoredSettings(); // Fetch fresh settings
+    if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) { // Check .env if key not in localStorage settings
+      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or ensure it's in your .env file.", variant: "destructive" });
       return;
     }
-    setCurrentSettings(freshSettings); 
+    setCurrentSettings(freshSettings);
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
     try {
@@ -142,28 +142,24 @@ export function ThemePlannerClient() {
     setIsLoadingThemes(false);
   };
 
-  const handleSaveTheme = (theme: Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'>) => {
+  const handleSaveTheme = (theme: Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'| 'suggestedKeywords'>) => {
     const newSuggestion: ThemeSuggestion = {
       id: Date.now().toString(),
       userInputTopic: currentUserInputTopic,
       title: theme.title,
       description: theme.description,
       keywords: theme.keywords,
+      suggestedKeywords: [], // Initialize as empty
       generatedAt: new Date().toISOString(),
       manualReferences: [],
     };
     addThemeSuggestion(newSuggestion);
-    refreshStoredThemes(); 
+    refreshStoredThemes();
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
 
   const handleDeleteTheme = useCallback((id: string) => {
     deleteThemeSuggestionById(id);
-    setSuggestedKeywordsMap(prev => {
-      const newMap = {...prev};
-      delete newMap[id];
-      return newMap;
-    });
     refreshStoredThemes();
     toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
   }, [refreshStoredThemes, toast]);
@@ -187,7 +183,7 @@ export function ThemePlannerClient() {
     refreshStoredThemes();
     toast({ title: "Manual Reference Added", description: "Your reference has been saved."});
     manualRefForm.reset({ title: "", content: ""});
-    setCurrentThemeForManualRef(null); 
+    setCurrentThemeForManualRef(null);
   };
 
   const handleDeleteManualRef = useCallback((themeId: string, refId: string) => {
@@ -199,7 +195,7 @@ export function ThemePlannerClient() {
     });
     refreshStoredThemes();
     toast({ title: "Manual Reference Deleted", description: "The manual reference has been removed." });
-  }, [refreshStoredThemes, toast]); 
+  }, [refreshStoredThemes, toast]);
 
   const toggleManualReferenceSelection = (themeId: string, refId: string) => {
     setSelectedManualReferences(prev => {
@@ -211,25 +207,32 @@ export function ThemePlannerClient() {
 
   const handleSuggestKeywordsForTheme = async (theme: ThemeSuggestion) => {
     const freshSettings = getStoredSettings();
-    if (!freshSettings?.openAIKey) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
+     if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) {
+      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or .env.", variant: "destructive" });
       return;
     }
     setIsLoadingSuggestedKeywords(theme.id);
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
-        platform: 'general', 
+        platform: 'general',
       });
-      setSuggestedKeywordsMap(prev => ({...prev, [theme.id]: result.hashtags }));
-      toast({ title: "Keywords Suggested!", description: "AI has suggested additional keywords/hashtags." });
+      const processedKeywords = result.hashtags.map(kw => kw.startsWith('#') ? kw.substring(1) : kw);
+      updateThemeWithSuggestedKeywords(theme.id, processedKeywords);
+      refreshStoredThemes(); // Refresh to show newly saved keywords
+      toast({ title: "Keywords Suggested!", description: "AI has suggested and saved additional keywords/search terms." });
     } catch (error) {
       console.error("Keyword suggestion error:", error);
       toast({ title: "AI Error", description: "Failed to suggest keywords. Check console for details.", variant: "destructive" });
-      setSuggestedKeywordsMap(prev => ({...prev, [theme.id]: [] }));
     }
     setIsLoadingSuggestedKeywords(null);
   };
+
+  const handleDeleteSuggestedKeyword = useCallback((themeId: string, keywordToDelete: string) => {
+    deleteKeywordFromTheme(themeId, keywordToDelete);
+    refreshStoredThemes();
+    toast({ title: "Keyword Deleted", description: `Keyword "${keywordToDelete}" has been removed.`});
+  }, [refreshStoredThemes, toast]);
 
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
@@ -240,11 +243,11 @@ export function ThemePlannerClient() {
     const queryParams = new URLSearchParams();
     queryParams.append('title', theme.title);
     queryParams.append('topic', theme.description);
-    
+
     if (selectedManualRefsContents.length > 0) {
       queryParams.append('manualRefs', JSON.stringify(selectedManualRefsContents));
     }
-    
+
     router.push(`/content/new?${queryParams.toString()}`);
   };
 
@@ -372,7 +375,7 @@ export function ThemePlannerClient() {
                             <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/> Are you absolutely sure?
                           </AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the theme idea titled "{suggestion.title}" and all its associated manual notes.
+                            This action cannot be undone. This will permanently delete the theme idea titled "{suggestion.title}" and all its associated manual notes and suggested keywords.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -385,19 +388,28 @@ export function ThemePlannerClient() {
                     </AlertDialog>
                   </div>
                 </div>
-                
-                {/* Keyword/Hashtag Suggestion Section */}
+
+                {/* AI Keyword/Hashtag Ideas Section */}
                 <div className="my-4 p-3 border-t border-dashed">
                   <div className="flex justify-between items-center mb-2">
-                    <h5 className="text-md font-semibold flex items-center"><Tags className="mr-2 h-5 w-5 text-primary"/>AI Keyword/Hashtag Ideas</h5>
+                    <h5 className="text-md font-semibold flex items-center"><Tags className="mr-2 h-5 w-5 text-primary"/>AI Keyword/Search Term Ideas</h5>
                     <Button variant="outline" size="sm" onClick={() => handleSuggestKeywordsForTheme(suggestion)} disabled={isLoadingSuggestedKeywords === suggestion.id}>
-                      {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Keywords/Hashtags
+                      {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Terms
                     </Button>
                   </div>
-                  {suggestedKeywordsMap[suggestion.id] && suggestedKeywordsMap[suggestion.id].length > 0 ? (
+                  {suggestion.suggestedKeywords && suggestion.suggestedKeywords.length > 0 ? (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {suggestedKeywordsMap[suggestion.id].map((keyword, index) => (
-                        <Badge key={`${keyword}-${index}`} variant="secondary">{keyword.startsWith('#') ? keyword : `#${keyword}`}</Badge>
+                      {suggestion.suggestedKeywords.map((keyword, index) => (
+                        <Badge key={`${keyword}-${index}`} variant="secondary" className="relative group pr-7">
+                          {keyword}
+                          <button
+                            onClick={() => handleDeleteSuggestedKeyword(suggestion.id, keyword)}
+                            className="absolute top-1/2 right-1 transform -translate-y-1/2 p-0.5 rounded-full hover:bg-muted-foreground/20 opacity-50 group-hover:opacity-100 transition-opacity"
+                            aria-label={`Delete keyword ${keyword}`}
+                          >
+                            <XIcon className="h-3 w-3" />
+                          </button>
+                        </Badge>
                       ))}
                     </div>
                   ) : (

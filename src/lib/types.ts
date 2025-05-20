@@ -15,9 +15,9 @@ export interface ThemeSuggestion {
   title: string;
   description: string;
   keywords?: string[]; // Keywords generated during initial theme suggestion
+  suggestedKeywords?: string[]; // AI-generated keywords/long-tail search terms
   generatedAt: string;
   manualReferences?: ManualReferenceItem[];
-  // researchLinks?: ResearchLinkItem[]; // Removed
 }
 
 export interface ContentItem {
@@ -35,28 +35,19 @@ export interface ContentItem {
   updatedAt: string;
   scheduledAt?: string;
   manualReferencesUsed?: Array<{ title?: string; content: string }>;
-  // referenceLinksUsed?: Array<{ title: string; url: string; summary: string; abntCitation?: string }>; // Removed
 }
 
 export interface AppSettings {
-  openAIKey: string;
+  openAIKey: string; // Note: Must be set in .env for Genkit flows
   openAIAgentId?: string;
   outputLanguage?: string;
   perplexityApiKey?: string;
 }
 
-export interface GenerateContentForPlatformInput {
-  platform: Platform;
-  topic: string;
-  wordCount?: number;
-  apiKey: string;
-  agentId?: string;
-  outputLanguage?: string;
-  manualReferenceTexts?: string[]; // Texts from manually added references
-  // referenceItems?: Array<{ title: string; url: string; summary: string }>; // Removed: AI-found research items
-}
-
-export interface GenerateContentForPlatformOutput {
-  content: string;
-  imagePrompt: string;
+export interface SummarizationItem {
+  id: string;
+  inputText: string;
+  summaryOutput: string;
+  language: string;
+  createdAt: string; // ISO date string
 }

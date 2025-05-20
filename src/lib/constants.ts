@@ -11,6 +11,7 @@ export const NAV_LINKS = [
   { href: "/", label: "Dashboard", iconName: "LayoutDashboard" },
   { href: "/content/new", label: "Create Content", iconName: "PlusCircle" },
   { href: "/themes", label: "Theme Planner", iconName: "Lightbulb" },
+  { href: "/summarizer", label: "Summarizer", iconName: "FileText" },
   { href: "/settings", label: "Settings", iconName: "SettingsIcon" },
 ];
 
@@ -41,3 +42,5 @@ export const DEFAULT_OUTPUT_LANGUAGE = 'pt'; // Changed to Portuguese
 export const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';
 export const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
 export const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';
+export const SUMMARIES_STORAGE_KEY = 'contentForgeAi_summaries'; // Added this line
+
