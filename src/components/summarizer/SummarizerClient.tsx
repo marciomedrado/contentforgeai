@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Label } from '@/components/ui/label'; // Added import
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { summarizeText as summarizeTextFlow } from '@/ai/flows/summarize-text-flow';
@@ -72,24 +72,40 @@ export function SummarizerClient() {
     resolver: zodResolver(summarizerFormSchema),
     defaultValues: {
       inputText: '',
-      outputLanguage: getStoredSummaries()?.[0]?.language || DEFAULT_OUTPUT_LANGUAGE,
+      outputLanguage: getStoredSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
     },
   });
 
   const refreshSummaries = useCallback(() => {
     setSavedSummaries(getStoredSummaries());
   }, []);
+  
+  const getSettings = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      return getStoredSettings();
+    }
+    return { outputLanguage: DEFAULT_OUTPUT_LANGUAGE };
+  }, []);
+
 
   useEffect(() => {
     refreshSummaries();
+    const currentLanguage = getSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
+    form.reset({ inputText: '', outputLanguage: currentLanguage });
+
+
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SUMMARIES_STORAGE_KEY) {
         refreshSummaries();
       }
+      if (event.key === 'contentForgeAi_appSettings') {
+         const newSettings = getSettings();
+         form.setValue('outputLanguage', newSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
+      }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshSummaries]);
+  }, [refreshSummaries, form, getSettings]);
 
   const onSummarizeSubmit: SubmitHandler<SummarizerFormData> = async (data) => {
     setIsLoading(true);
@@ -138,7 +154,8 @@ export function SummarizerClient() {
       toast({ title: "Summary Saved!", description: "Your summary has been saved." });
     }
     refreshSummaries();
-    // Optionally clear form: form.reset({ inputText: '', outputLanguage }); setSummaryOutput('');
+    form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') }); // Clear input, keep language
+    setSummaryOutput(''); // Clear output
   };
 
   const handleEditSummary = (summary: SummarizationItem) => {
@@ -154,9 +171,9 @@ export function SummarizerClient() {
   const handleDeleteSummary = (id: string) => {
     deleteSummarizationItemById(id);
     refreshSummaries();
-    if (editingSummaryId === id) { // If deleting the item currently being edited
+    if (editingSummaryId === id) { 
       setEditingSummaryId(null);
-      form.reset();
+      form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
       setSummaryOutput('');
     }
     toast({ title: "Summary Deleted", description: "The summary has been removed." });
@@ -179,7 +196,7 @@ export function SummarizerClient() {
     clearAllSummaries();
     refreshSummaries();
     setEditingSummaryId(null);
-    form.reset();
+    form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
     setSummaryOutput('');
     toast({ title: "History Cleared", description: "All summaries have been deleted." });
   };
@@ -187,7 +204,7 @@ export function SummarizerClient() {
   const handleOpenSendToThemeModal = (summary: SummarizationItem) => {
     setCurrentSummaryToSend(summary);
     setAllThemeSuggestions(getStoredThemeSuggestions());
-    setSelectedThemeIdForSummary(null); // Reset selection
+    setSelectedThemeIdForSummary(null); 
     setIsSendToThemeModalOpen(true);
   };
 
@@ -249,7 +266,7 @@ export function SummarizerClient() {
                       <SettingsIcon className="mr-2 h-4 w-4 text-muted-foreground" />
                       Summary Language
                     </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger id="outputLanguage">
                           <SelectValue placeholder="Select a language" />
@@ -286,7 +303,7 @@ export function SummarizerClient() {
         </Form>
       </Card>
 
-      {summaryOutput && !editingSummaryId && ( // Show current summary only if not editing (to avoid duplication)
+      {summaryOutput && !editingSummaryId && ( 
         <Card>
           <CardHeader>
             <CardTitle>Generated Summary</CardTitle>
@@ -299,7 +316,7 @@ export function SummarizerClient() {
         </Card>
       )}
       
-      {editingSummaryId && summaryOutput && ( // Show current summary being edited
+      {editingSummaryId && summaryOutput && ( 
         <Card className="border-primary">
           <CardHeader>
             <CardTitle className="text-primary flex items-center">
@@ -314,7 +331,11 @@ export function SummarizerClient() {
             </ScrollArea>
           </CardContent>
             <CardFooter className="flex justify-end">
-                 <Button variant="ghost" onClick={() => { setEditingSummaryId(null); form.reset(); setSummaryOutput(''); }}>
+                 <Button variant="ghost" onClick={() => { 
+                     setEditingSummaryId(null); 
+                     form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') }); 
+                     setSummaryOutput(''); 
+                 }}>
                     <XIcon className="mr-2 h-4 w-4"/> Cancel Edit
                 </Button>
             </CardFooter>
