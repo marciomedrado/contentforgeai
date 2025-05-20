@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings } from '@/lib/types';
+import type { ContentItem, Platform, AppSettings, ReferenceMaterial } from '@/lib/types';
 import { PLATFORM_OPTIONS, DEFAULT_IMAGE_PROMPT_FREQUENCY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,12 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { HtmlEditor } from './HtmlEditor';
 import { useToast } from '@/hooks/use-toast';
 import { generateContentForPlatform } from '@/ai/flows/generate-content-for-platform';
 import { suggestHashtags as suggestHashtagsFlow } from '@/ai/flows/smart-hashtag-suggestions';
 import { getStoredSettings, addContentItem, updateContentItem, getContentItemById } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIcon, FileText } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIcon, FileText, BookOpen, MessageSquare } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const formSchema = z.object({
@@ -34,12 +35,20 @@ const formSchema = z.object({
 type ContentFormData = z.infer<typeof formSchema>;
 
 interface ContentFormClientProps {
-  contentId?: string; // For editing existing content
-  initialTitle?: string; // For pre-filling title from theme planner
-  initialTopic?: string; // For pre-filling topic/description from theme planner
+  contentId?: string;
+  initialTitle?: string;
+  initialTopic?: string;
+  initialReferenceItems?: ReferenceMaterial[];
+  initialManualReferenceTexts?: string[];
 }
 
-export function ContentFormClient({ contentId, initialTitle, initialTopic }: ContentFormClientProps) {
+export function ContentFormClient({ 
+  contentId, 
+  initialTitle, 
+  initialTopic, 
+  initialReferenceItems,
+  initialManualReferenceTexts,
+}: ContentFormClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -53,23 +62,26 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings()); 
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
 
+  // Store the initial reference items passed via props
+  const [referenceItemsForDisplay, setReferenceItemsForDisplay] = useState<ReferenceMaterial[]>(initialReferenceItems || []);
+  const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
+
+
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: '',
       platform: 'Wordpress',
       topic: '',
-      wordCount: undefined, // This is fine for RHF state
+      wordCount: undefined,
       imagePromptFrequency: DEFAULT_IMAGE_PROMPT_FREQUENCY,
     },
   });
 
   useEffect(() => {
-    const handleStorageChange = () => {
-      setCurrentSettings(getStoredSettings());
-    };
+    const handleStorageChange = () => setCurrentSettings(getStoredSettings());
     window.addEventListener('storage', handleStorageChange);
-    setCurrentSettings(getStoredSettings());
+    setCurrentSettings(getStoredSettings()); // Initial fetch
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -85,26 +97,23 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
         setGeneratedContent(content.content);
         setImagePrompts(content.imagePrompts);
         setSuggestedHashtags(content.hashtags || []);
+        setReferenceItemsForDisplay(content.referenceLinksUsed || []);
+        setManualReferencesForDisplay(content.manualReferencesUsed?.map(mr => mr.content) || []);
       } else {
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
         router.push('/');
       }
     } else {
-      if (initialTitle) {
-        form.setValue('title', initialTitle);
-      }
-      if (initialTopic) {
-        form.setValue('topic', initialTopic);
-        if (!initialTitle && !form.getValues('title')) {
-          // If only topic came (old behavior) or title is still empty, derive a title
+      if (initialTitle) form.setValue('title', initialTitle);
+      if (initialTopic) form.setValue('topic', initialTopic);
+      if (!initialTitle && initialTopic && !form.getValues('title')) {
            form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
-        }
       }
+      setReferenceItemsForDisplay(initialReferenceItems || []);
+      setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [contentId, initialTitle, initialTopic, form, router, toast]);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [contentId, initialTitle, initialTopic, initialReferenceItems, initialManualReferenceTexts, form, router, toast]);
 
   const selectedPlatform = form.watch('platform');
 
@@ -129,12 +138,14 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
         apiKey: freshSettings.openAIKey,
         agentId: freshSettings.openAIAgentId || undefined,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+        referenceItems: referenceItemsForDisplay.length > 0 ? referenceItemsForDisplay : undefined,
+        manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
       setImagePrompts(prompts);
 
-      if (!form.getValues('title')) { // If title wasn't pre-filled or user-set
+      if (!form.getValues('title')) {
         form.setValue('title', `${platform} post about ${topic.substring(0,30)}...`);
       }
       toast({ title: "Content Generated!", description: "AI has generated content and image prompts." });
@@ -146,6 +157,7 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
   };
 
   const handleSuggestHashtags = async () => {
+    // ... (existing hashtag logic remains same)
     if (!generatedContent) {
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
@@ -185,6 +197,8 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
       status: existingContent?.status || 'Draft',
       createdAt: existingContent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      referenceLinksUsed: referenceItemsForDisplay.length > 0 ? referenceItemsForDisplay : undefined,
+      manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(content => ({content})) : undefined,
     };
 
     if (existingContent) {
@@ -226,7 +240,7 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
               <FormField
                 control={form.control}
                 name="platform"
-                render={({ field }) => (
+                render={({ field }) => ( /* ... existing platform field ... */ 
                   <FormItem>
                     <FormLabel>Platform</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -249,7 +263,7 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
                 <FormField
                   control={form.control}
                   name="imagePromptFrequency"
-                  render={({ field }) => (
+                  render={({ field }) => ( /* ... existing imagePromptFrequency field ... */ 
                     <FormItem>
                       <FormLabel>Image Prompt Frequency (words)</FormLabel>
                       <FormControl>
@@ -286,18 +300,11 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
                     <Input
                       type="number"
                       placeholder="e.g., 500"
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                      value={field.value ?? ''} // Ensure input's value prop is never undefined
+                      {...field}
+                      value={field.value ?? ''}
                       onChange={e => {
                         const textValue = e.target.value;
-                        if (textValue === '') {
-                          field.onChange(undefined); // Update RHF state to undefined for Zod optional
-                        } else {
-                          // Let Zod handle coercion from number string / NaN from parseInt
-                          field.onChange(parseInt(textValue, 10)); 
-                        }
+                        field.onChange(textValue === '' ? undefined : parseInt(textValue, 10)); 
                       }}
                     />
                   </FormControl>
@@ -306,6 +313,44 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
               )}
             />
             
+            {(referenceItemsForDisplay.length > 0 || manualReferencesForDisplay.length > 0) && (
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="references">
+                  <AccordionTrigger>
+                    <div className="flex items-center">
+                      <BookOpen className="mr-2 h-5 w-5 text-primary" />
+                      Reference Materials Used for Generation
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 pt-2">
+                    {referenceItemsForDisplay.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-sm mb-1">AI-Found Research:</h4>
+                        <ul className="list-disc list-inside space-y-1 pl-2">
+                          {referenceItemsForDisplay.map((item, index) => (
+                            <li key={`research-${index}`} className="text-xs">
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{item.title}</a>
+                              <p className="text-muted-foreground italic truncate">{item.summary.substring(0,100)}...</p>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                     {manualReferencesForDisplay.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
+                        <ul className="list-disc list-inside space-y-1 pl-2">
+                          {manualReferencesForDisplay.map((text, index) => (
+                            <li key={`manual-${index}`} className="text-xs text-muted-foreground italic truncate">{text.substring(0,100)}...</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+
             <Button type="button" onClick={handleGenerateContent} disabled={isLoadingAi} className="w-full md:w-auto">
               {isLoadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate Content with AI
@@ -328,6 +373,7 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
                   rows={15} 
                   placeholder="Generated content will appear here..." 
                   className="min-h-[300px]" 
+                  suppressHydrationWarning={true}
                 />
               )}
             </CardContent>
@@ -351,6 +397,7 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
                     setImagePrompts(newPrompts);
                   }}
                   rows={2}
+                  suppressHydrationWarning={true}
                 />
               ))}
             </CardContent>
@@ -388,4 +435,3 @@ export function ContentFormClient({ contentId, initialTitle, initialTopic }: Con
     </Form>
   );
 }
-

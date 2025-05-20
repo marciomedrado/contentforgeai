@@ -1,3 +1,4 @@
+
 import type { Platform } from './types';
 
 export const APP_NAME = "ContentForge AI";
@@ -26,15 +27,15 @@ export const PLATFORM_OPTIONS: { value: Platform, label: string }[] = [
 ];
 
 export const LANGUAGE_OPTIONS: { value: string, label: string }[] = [
-  { value: 'en', label: 'English' },
   { value: 'pt', label: 'Português (Portuguese)' },
+  { value: 'en', label: 'English' },
   { value: 'es', label: 'Español (Spanish)' },
   { value: 'fr', label: 'Français (French)' },
   { value: 'de', label: 'Deutsch (German)' },
   // Add more languages as needed
 ];
 
-export const DEFAULT_OUTPUT_LANGUAGE = 'en';
+export const DEFAULT_OUTPUT_LANGUAGE = 'pt'; // Changed to Portuguese
 
 // Storage Keys
 export const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';

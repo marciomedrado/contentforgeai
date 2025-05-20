@@ -1,5 +1,5 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion } from './types';
+import type { ContentItem, AppSettings, ThemeSuggestion, ResearchLinkItem, ManualReferenceItem } from './types';
 import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY } from './constants';
 
 // Helper to safely interact with localStorage
@@ -19,7 +19,6 @@ const safeLocalStorageSet = <T,>(key: string, value: T): void => {
   try {
     const oldValue = window.localStorage.getItem(key);
     window.localStorage.setItem(key, JSON.stringify(value));
-    // Dispatch a storage event so other components using the same key can update
     window.dispatchEvent(new StorageEvent('storage', { 
       key: key,
       oldValue: oldValue,
@@ -58,12 +57,12 @@ export const saveStoredContentItems = (items: ContentItem[]): void => {
 
 export const addContentItem = (item: ContentItem): void => {
   const items = getStoredContentItems();
-  saveStoredContentItems([item, ...items]);
+  saveStoredContentItems([item, ...items].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 };
 
 export const updateContentItem = (updatedItem: ContentItem): void => {
   const items = getStoredContentItems();
-  saveStoredContentItems(items.map(item => item.id === updatedItem.id ? updatedItem : item));
+  saveStoredContentItems(items.map(item => item.id === updatedItem.id ? updatedItem : item).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 };
 
 export const getContentItemById = (id: string): ContentItem | undefined => {
@@ -77,7 +76,7 @@ export const deleteContentItemById = (id: string): void => {
 };
 
 export const clearAllContentItems = (): void => {
-  safeLocalStorageRemove(CONTENT_STORAGE_KEY);
+  safeLocalStorageSet<ContentItem[]>(CONTENT_STORAGE_KEY, []);
 };
 
 
@@ -86,6 +85,7 @@ export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
     openAIKey: '',
     outputLanguage: DEFAULT_OUTPUT_LANGUAGE, 
+    perplexityApiKey: '',
   };
   const stored = safeLocalStorageGet<Partial<AppSettings>>(SETTINGS_STORAGE_KEY, {});
   return { ...defaultSettings, ...stored };
@@ -97,18 +97,17 @@ export const saveStoredSettings = (settings: AppSettings): void => {
 
 // Theme Suggestions
 export const getStoredThemeSuggestions = (): ThemeSuggestion[] => {
-  return safeLocalStorageGet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, []);
+  return safeLocalStorageGet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, []).sort((a,b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
 };
 
 export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
-  safeLocalStorageSet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, themes);
+  safeLocalStorageSet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, themes.sort((a,b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()));
 };
 
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
-  // Avoid duplicates by title and description for the same user input topic
   if (!themes.some(t => t.userInputTopic === theme.userInputTopic && t.title === theme.title && t.description === theme.description)) {
-    saveStoredThemeSuggestions([theme, ...themes].sort((a,b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()));
+    saveStoredThemeSuggestions([theme, ...themes]);
   }
 };
 
@@ -118,14 +117,49 @@ export const deleteThemeSuggestionById = (id: string): void => {
 };
 
 export const clearAllThemeSuggestions = (): void => {
-  safeLocalStorageRemove(THEMES_STORAGE_KEY);
+  safeLocalStorageSet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, []);
+};
+
+export const updateThemeSuggestionWithLinks = (themeId: string, researchLinks: ResearchLinkItem[]): void => {
+  const themes = getStoredThemeSuggestions();
+  const themeIndex = themes.findIndex(t => t.id === themeId);
+  if (themeIndex > -1) {
+    themes[themeIndex].researchLinks = [...(themes[themeIndex].researchLinks || []), ...researchLinks];
+    saveStoredThemeSuggestions(themes);
+  }
+};
+
+export const deleteResearchLinkFromTheme = (themeId: string, researchLinkId: string): void => {
+  const themes = getStoredThemeSuggestions();
+  const themeIndex = themes.findIndex(t => t.id === themeId);
+  if (themeIndex > -1 && themes[themeIndex].researchLinks) {
+    themes[themeIndex].researchLinks = themes[themeIndex].researchLinks?.filter(link => link.id !== researchLinkId);
+    saveStoredThemeSuggestions(themes);
+  }
+};
+
+export const addManualReferenceToTheme = (themeId: string, reference: ManualReferenceItem): void => {
+  const themes = getStoredThemeSuggestions();
+  const themeIndex = themes.findIndex(t => t.id === themeId);
+  if (themeIndex > -1) {
+    if (!themes[themeIndex].manualReferences) {
+      themes[themeIndex].manualReferences = [];
+    }
+    themes[themeIndex].manualReferences!.unshift(reference); // Add to the beginning
+    saveStoredThemeSuggestions(themes);
+  }
+};
+
+export const deleteManualReferenceFromTheme = (themeId: string, referenceId: string): void => {
+  const themes = getStoredThemeSuggestions();
+  const themeIndex = themes.findIndex(t => t.id === themeId);
+  if (themeIndex > -1 && themes[themeIndex].manualReferences) {
+    themes[themeIndex].manualReferences = themes[themeIndex].manualReferences?.filter(ref => ref.id !== referenceId);
+    saveStoredThemeSuggestions(themes);
+  }
 };
 
 export const clearAllData = (): void => {
   clearAllContentItems();
   clearAllThemeSuggestions();
-  // Note: AppSettings are not cleared by this function by default,
-  // as API keys are often preserved. If settings also need to be cleared,
-  // add: safeLocalStorageRemove(SETTINGS_STORAGE_KEY);
-  // and ensure getStoredSettings() handles a completely empty state gracefully.
 };
