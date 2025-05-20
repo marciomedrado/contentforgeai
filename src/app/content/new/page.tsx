@@ -6,7 +6,6 @@ interface NewContentPageProps {
   searchParams?: {
     title?: string;
     topic?: string;
-    // research?: string; // JSON string of ResearchLinkItem[] - Removed
     manualRefs?: string; // JSON string of string[] (manual reference texts)
   };
 }
@@ -37,3 +36,4 @@ export default function NewContentPage({ searchParams }: NewContentPageProps) {
     </div>
   );
 }
+

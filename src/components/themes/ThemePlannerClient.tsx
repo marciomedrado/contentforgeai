@@ -123,7 +123,7 @@ export function ThemePlannerClient() {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
     }
-    setCurrentSettings(freshSettings); // Ensure currentSettings is up-to-date for the call
+    setCurrentSettings(freshSettings); 
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
     try {
@@ -153,7 +153,7 @@ export function ThemePlannerClient() {
       manualReferences: [],
     };
     addThemeSuggestion(newSuggestion);
-    refreshStoredThemes(); // This updates storedThemeSuggestions state
+    refreshStoredThemes(); 
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
 
@@ -166,7 +166,7 @@ export function ThemePlannerClient() {
     });
     refreshStoredThemes();
     toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
-  }, [toast, refreshStoredThemes]);
+  }, [refreshStoredThemes, toast]);
 
 
   const handleOpenManualRefModal = (theme: ThemeSuggestion) => {
@@ -187,8 +187,6 @@ export function ThemePlannerClient() {
     refreshStoredThemes();
     toast({ title: "Manual Reference Added", description: "Your reference has been saved."});
     manualRefForm.reset({ title: "", content: ""});
-    // Close the dialog after submit by resetting currentThemeForManualRef
-    // This assumes Dialog's open state is controlled by currentThemeForManualRef being non-null
     setCurrentThemeForManualRef(null); 
   };
 
@@ -201,7 +199,7 @@ export function ThemePlannerClient() {
     });
     refreshStoredThemes();
     toast({ title: "Manual Reference Deleted", description: "The manual reference has been removed." });
-  }, [refreshStoredThemes]); // Added refreshStoredThemes
+  }, [refreshStoredThemes, toast]); 
 
   const toggleManualReferenceSelection = (themeId: string, refId: string) => {
     setSelectedManualReferences(prev => {
@@ -221,7 +219,7 @@ export function ThemePlannerClient() {
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
-        platform: 'general', // Now a valid platform
+        platform: 'general', 
       });
       setSuggestedKeywordsMap(prev => ({...prev, [theme.id]: result.hashtags }));
       toast({ title: "Keywords Suggested!", description: "AI has suggested additional keywords/hashtags." });
@@ -509,3 +507,4 @@ export function ThemePlannerClient() {
     </div>
   );
 }
+

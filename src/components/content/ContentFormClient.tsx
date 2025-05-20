@@ -21,7 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { generateContentForPlatform } from '@/ai/flows/generate-content-for-platform';
 import { suggestHashtags as suggestHashtagsFlow } from '@/ai/flows/smart-hashtag-suggestions';
 import { getStoredSettings, addContentItem, updateContentItem, getContentItemById } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIcon, FileText, BookOpen, MessageSquare } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIcon, FileText, BookOpen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const formSchema = z.object({
@@ -39,7 +39,6 @@ interface ContentFormClientProps {
   initialTitle?: string;
   initialTopic?: string;
   initialManualReferenceTexts?: string[];
-  // initialReferenceItems?: Array<{ title: string; url: string; summary: string }>; // Removed
 }
 
 export function ContentFormClient({ 
@@ -78,7 +77,7 @@ export function ContentFormClient({
   useEffect(() => {
     const handleStorageChange = () => setCurrentSettings(getStoredSettings());
     window.addEventListener('storage', handleStorageChange);
-    setCurrentSettings(getStoredSettings()); // Initial fetch
+    setCurrentSettings(getStoredSettings()); 
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -164,7 +163,7 @@ export function ContentFormClient({
     try {
       const result = await suggestHashtagsFlow({
         text: generatedContent,
-        platform: selectedPlatform.toLowerCase() as 'instagram' | 'facebook',
+        platform: selectedPlatform.toLowerCase() as 'instagram' | 'facebook' | 'general',
       });
       setSuggestedHashtags(result.hashtags);
       toast({ title: "Hashtags Suggested!", description: "AI has suggested relevant hashtags." });
@@ -307,7 +306,7 @@ export function ContentFormClient({
             
             {manualReferencesForDisplay.length > 0 && (
               <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="references">
+                <AccordionItem value="manual-references-accordion">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
@@ -315,16 +314,16 @@ export function ContentFormClient({
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3 pt-2">
-                     {manualReferencesForDisplay.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
-                        <ul className="list-disc list-inside space-y-1 pl-2">
-                          {manualReferencesForDisplay.map((text, index) => (
-                            <li key={`manual-${index}`} className="text-xs text-muted-foreground italic truncate">{text.substring(0,100)}...</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
+                      <ul className="list-disc list-inside space-y-1 pl-2">
+                        {manualReferencesForDisplay.map((text, index) => (
+                          <li key={`manual-${index}`} className="text-xs text-muted-foreground italic whitespace-pre-wrap">
+                            {text.length > 100 ? `${text.substring(0,100)}...` : text}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
@@ -414,3 +413,4 @@ export function ContentFormClient({
     </Form>
   );
 }
+
