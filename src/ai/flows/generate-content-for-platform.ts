@@ -18,11 +18,11 @@ const GenerateContentForPlatformInputSchema = z.object({
     .enum(['Wordpress', 'Instagram', 'Facebook'])
     .describe('The platform for which the content is being generated.'),
   topic: z.string().describe('The topic or brief for the content.'),
-  wordCount: z.number().optional().describe('Approximate desired word count for the content.'),
-  apiKey: z.string().describe('The OpenAI API key.'), 
-  agentId: z.string().optional().describe('The OpenAI Agent ID (optional).'),
+  wordCount: z.coerce.number().optional().describe('Approximate desired word count for the content.'),
   outputLanguage: z.string().optional().default(DEFAULT_OUTPUT_LANGUAGE).describe('The desired output language for the content (e.g., "en", "pt", "es").'),
   manualReferenceTexts: z.array(z.string()).optional().describe("An array of manually added text snippets or notes to be used as additional reference material."),
+  referenceItems: z.array(z.object({ summary: z.string(), url: z.string() })).optional().describe("An array of research items (summary and URL) to be used as primary reference material. These items should be cited in ABNT format if used."),
+  agentId: z.string().optional().describe('The OpenAI Agent ID (optional).'), // Kept for potential future use if OpenAI direct calls are re-enabled
 });
 export type GenerateContentForPlatformInput = z.infer<typeof GenerateContentForPlatformInputSchema>;
 
@@ -40,7 +40,8 @@ const platformInstructions = (
     platform: Platform, 
     wordCount?: number, 
     outputLanguage?: string, 
-    hasManualReferences?: boolean
+    hasManualReferences?: boolean,
+    hasReferenceItems?: boolean
   ): string => {
   let specificInstructions = "";
   let langInstruction = `The content MUST be written in ${outputLanguage || DEFAULT_OUTPUT_LANGUAGE}.`;
@@ -54,6 +55,14 @@ You have been provided with 'manualReferenceTexts'. These are additional notes o
 `;
   }
 
+  if (hasReferenceItems) {
+    referenceInstruction += `
+You have also been provided with 'referenceItems' (each containing a 'summary' and its original 'url'). These items are primary source materials.
+Base your content heavily on these provided 'referenceItems'.
+If you use information from any 'referenceItem', you MUST cite its original 'url' in a "References" section at the end of the content. Use ABNT format for citations. For example: NOME DO SITE. Título do artigo. Disponível em: <URL>. Acesso em: dd mmm. yyyy. (Use the current date for "Acesso em").
+`;
+  }
+
 
   if (platform === 'Wordpress') {
     specificInstructions = `Generate a well-structured HTML blog post${wordCountText}. ${langInstruction} ${detailInstruction} ${referenceInstruction} The HTML MUST include:
@@ -61,15 +70,28 @@ You have been provided with 'manualReferenceTexts'. These are additional notes o
 - Headings for sections (e.g., <h2>, <h3>, <h4>).
 - Paragraphs (<p>) for text.
 - Lists (<ul> or <ol> with <li> items) where appropriate.
-The entire output for the 'content' field must be valid HTML. Example:
+The entire output for the 'content' field must be valid HTML. Example of overall structure:
 <article>
   <h1>Main Blog Post Title</h1>
   <p>This is an introductory paragraph.</p>
   <h2>First Section Title</h2>
   <p>Content for the first section...</p>
+  <!-- IMAGE_PROMPT: A vibrant cityscape at dusk -->
+  <img src="https://placehold.co/600x400.png" alt="A vibrant cityscape at dusk" data-ai-hint="cityscape dusk" />
+  <p>More content...</p>
+  ${hasReferenceItems ? '<h2>References</h2>\n  <ul>\n    <li>NOME DO SITE. Título do artigo. Disponível em: &lt;URL_UTILIZADA&gt;. Acesso em: dd mmm. yyyy.</li>\n  </ul>' : ''}
 </article>
-For image prompts: If the content is long, you can suggest multiple image prompts. Embed these as HTML comments within the HTML content, like <!-- IMAGE_PROMPT: A descriptive prompt -->. Then, consolidate ALL suggested image prompts (from comments or a main one) into the 'imagePrompt' output field, separated by newlines. If no specific in-content prompts are generated, provide one general image prompt.
-The generated content should be ONLY the HTML for the blog post.`;
+
+Image Prompt Instructions for WordPress:
+If you suggest an image, first embed an HTML comment like <!-- IMAGE_PROMPT: Your descriptive image prompt here (e.g., A serene forest path in autumn) -->.
+Immediately AFTER EACH such <!-- IMAGE_PROMPT: ... --> comment, you MUST insert a complete <img> tag as a placeholder.
+This <img> tag MUST be structured EXACTLY as follows:
+<img src="https://placehold.co/600x400.png" alt="[Image prompt text from comment]" data-ai-hint="[keyword1 keyword2]" />
+- The 'src' attribute MUST be 'https://placehold.co/600x400.png'.
+- The 'alt' attribute MUST be IDENTICAL to the text within the <!-- IMAGE_PROMPT: ... --> comment.
+- The 'data-ai-hint' attribute MUST contain one or, at most, two relevant keywords extracted from the image prompt (e.g., for "A serene forest path in autumn", use "forest path" or "autumn forest"). Do not use more than two words.
+After generating all HTML content, consolidate ALL image prompts (from the <!-- IMAGE_PROMPT: ... --> comments) into the 'imagePrompt' output field of the JSON response, separated by newlines. If no in-content prompts are made, provide one general image prompt in the 'imagePrompt' field.
+The generated content for the 'content' field should be ONLY the HTML for the blog post.`;
   } else if (platform === 'Instagram') {
     specificInstructions = `Generate an engaging Instagram post${wordCountText}. ${langInstruction} ${detailInstruction} ${referenceInstruction} The generated content should be the text for the Instagram post. Provide a single optimized image prompt in the 'imagePrompt' output field.`;
   } else if (platform === 'Facebook') {
@@ -95,7 +117,17 @@ Additional Manual Notes/References (Incorporate these as relevant):
 {{/each}}
 {{/if}}
 
-Follow these specific instructions for content structure and references:
+{{#if referenceItems}}
+Primary Reference Materials (Base your content heavily on these items and cite their URLs in ABNT format if used, as per platform instructions):
+{{#each referenceItems}}
+Reference URL: {{{this.url}}}
+Reference Summary/Content:
+{{{this.summary}}}
+---
+{{/each}}
+{{/if}}
+
+Follow these specific instructions for content structure, image placeholders (if applicable), and references:
 {{{specificInstructions}}}
 
 Your response MUST be a JSON object matching the output schema.
@@ -116,7 +148,8 @@ const generateContentForPlatformFlow = ai.defineFlow(
         input.platform as Platform, 
         input.wordCount, 
         lang,
-        !!(input.manualReferenceTexts && input.manualReferenceTexts.length > 0)
+        !!(input.manualReferenceTexts && input.manualReferenceTexts.length > 0),
+        !!(input.referenceItems && input.referenceItems.length > 0)
     );
     
     const promptInput = {
