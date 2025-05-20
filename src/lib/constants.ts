@@ -35,3 +35,8 @@ export const LANGUAGE_OPTIONS: { value: string, label: string }[] = [
 ];
 
 export const DEFAULT_OUTPUT_LANGUAGE = 'en';
+
+// Storage Keys
+export const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';
+export const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
+export const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';

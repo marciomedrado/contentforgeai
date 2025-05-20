@@ -1,10 +1,6 @@
 
 import type { ContentItem, AppSettings, ThemeSuggestion } from './types';
-import { DEFAULT_OUTPUT_LANGUAGE } from './constants';
-
-const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';
-const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
-const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';
+import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY } from './constants';
 
 // Helper to safely interact with localStorage
 const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
@@ -23,7 +19,8 @@ const safeLocalStorageSet = <T>(key: string, value: T): void => {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
     // Dispatch a storage event so other components using the same key can update
-    window.dispatchEvent(new StorageEvent('storage', { key }));
+    // Correctly pass the key that was changed
+    window.dispatchEvent(new StorageEvent('storage', { key: key }));
   } catch (error) {
     console.error(`Error setting item ${key} in localStorage`, error);
   }
@@ -94,4 +91,3 @@ export const deleteThemeSuggestionById = (id: string): void => {
   const themes = getStoredThemeSuggestions();
   saveStoredThemeSuggestions(themes.filter(theme => theme.id !== id));
 };
-
