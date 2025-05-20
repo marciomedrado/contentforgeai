@@ -34,10 +34,11 @@ type ContentFormData = z.infer<typeof formSchema>;
 
 interface ContentFormClientProps {
   contentId?: string; // For editing existing content
-  initialTopic?: string; // For pre-filling from theme planner
+  initialTitle?: string; // For pre-filling title from theme planner
+  initialTopic?: string; // For pre-filling topic/description from theme planner
 }
 
-export function ContentFormClient({ contentId, initialTopic }: ContentFormClientProps) {
+export function ContentFormClient({ contentId, initialTitle, initialTopic }: ContentFormClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -48,7 +49,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
   const [imagePrompts, setImagePrompts] = useState<string[]>([]);
   const [suggestedHashtags, setSuggestedHashtags] = useState<string[]>([]);
   
-  const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings()); // Initialize with stored settings
+  const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings()); 
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
 
   const form = useForm<ContentFormData>({
@@ -63,14 +64,11 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
   });
 
   useEffect(() => {
-    // Update currentSettings if they change in localStorage (e.g. user changes them in another tab)
-    // This is a basic way, more robust solutions might use storage events or context
     const handleStorageChange = () => {
       setCurrentSettings(getStoredSettings());
     };
     window.addEventListener('storage', handleStorageChange);
-    
-    setCurrentSettings(getStoredSettings()); // Ensure latest settings on mount
+    setCurrentSettings(getStoredSettings());
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -90,16 +88,22 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
         router.push('/');
       }
-    } else if (initialTopic) {
-      form.setValue('topic', initialTopic);
-      if (!form.getValues('title')) {
-         form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
+    } else {
+      if (initialTitle) {
+        form.setValue('title', initialTitle);
+      }
+      if (initialTopic) {
+        form.setValue('topic', initialTopic);
+        if (!initialTitle && !form.getValues('title')) {
+          // If only topic came (old behavior) or title is still empty, derive a title
+           form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
+        }
       }
     }
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [contentId, initialTopic, form, router, toast]);
+  }, [contentId, initialTitle, initialTopic, form, router, toast]);
 
   const selectedPlatform = form.watch('platform');
 
@@ -109,7 +113,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
-    const freshSettings = getStoredSettings(); // Get latest settings before generation
+    const freshSettings = getStoredSettings(); 
     if (!freshSettings?.openAIKey) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
@@ -129,7 +133,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
       setImagePrompts(prompts);
 
-      if (!form.getValues('title')) {
+      if (!form.getValues('title')) { // If title wasn't pre-filled or user-set
         form.setValue('title', `${platform} post about ${topic.substring(0,30)}...`);
       }
       toast({ title: "Content Generated!", description: "AI has generated content and image prompts." });
@@ -145,7 +149,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
-    const freshSettings = getStoredSettings(); // Get latest settings
+    const freshSettings = getStoredSettings();
      if (!freshSettings?.openAIKey) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
@@ -191,7 +195,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
     }
     
     setIsSaving(false);
-    router.push('/'); // Redirect to dashboard after save
+    router.push('/'); 
   };
 
   return (
@@ -262,9 +266,9 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
               name="topic"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Topic / Main Idea</FormLabel>
+                  <FormLabel>Topic / Main Idea / Brief</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Describe the main topic or idea for the AI to generate content on..." {...field} rows={3} />
+                    <Textarea placeholder="Describe the main topic, idea, or paste the brief for the AI to generate content on..." {...field} rows={4} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -304,9 +308,9 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
                 <Textarea 
                   value={generatedContent} 
                   onChange={(e) => setGeneratedContent(e.target.value)} 
-                  rows={15} // Increased rows for more space
+                  rows={15} 
                   placeholder="Generated content will appear here..." 
-                  className="min-h-[200px]" // Ensure a minimum height
+                  className="min-h-[300px]" 
                 />
               )}
             </CardContent>
@@ -357,7 +361,7 @@ export function ContentFormClient({ contentId, initialTopic }: ContentFormClient
           </Card>
         )}
 
-        <CardFooter className="flex justify-end sticky bottom-0 bg-background py-4 border-t">
+        <CardFooter className="flex justify-end sticky bottom-0 bg-background py-4 border-t z-10">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             {existingContent ? 'Update Content' : 'Save Draft'}

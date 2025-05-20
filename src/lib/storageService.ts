@@ -81,5 +81,13 @@ export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
 
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
-  saveStoredThemeSuggestions([theme, ...themes]);
+  // Avoid duplicates by title and description
+  if (!themes.some(t => t.title === theme.title && t.description === theme.description)) {
+    saveStoredThemeSuggestions([theme, ...themes]);
+  }
+};
+
+export const deleteThemeSuggestionById = (id: string): void => {
+  const themes = getStoredThemeSuggestions();
+  saveStoredThemeSuggestions(themes.filter(theme => theme.id !== id));
 };

@@ -3,18 +3,17 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { FileText, Instagram, FacebookIcon as Facebook, Edit3, Trash2, CalendarDays, Tag } from 'lucide-react'; // Using Facebook from lucide-react
+import { FileText, Instagram, FacebookIcon, Edit3, Trash2, CalendarDays } from 'lucide-react'; 
+import { format, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 const PlatformIcon: React.FC<{ platform: Platform, className?: string }> = ({ platform, className }) => {
   const commonProps = { className: cn("h-5 w-5", className) };
   if (platform === 'Wordpress') return <FileText {...commonProps} />;
   if (platform === 'Instagram') return <Instagram {...commonProps} />;
-  if (platform === 'Facebook') return <Facebook {...commonProps} />; // Corrected to Facebook
+  if (platform === 'Facebook') return <FacebookIcon {...commonProps} />;
   return null;
 };
-
-import { format, parseISO } from 'date-fns';
-import { cn } from '@/lib/utils';
 
 interface ContentCardProps {
   item: ContentItem;
@@ -65,12 +64,14 @@ export function ContentCard({ item, onDelete }: ContentCardProps) {
         </Badge>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" asChild>
-            <Link href={`/content/${item.id}/edit`}>
+            <Link href={`/content/${item.id}/edit`} passHref>
               <Edit3 className="h-4 w-4" />
+               <span className="sr-only">Edit content {item.title}</span>
             </Link>
           </Button>
           <Button variant="destructive" size="sm" onClick={() => onDelete(item.id)}>
             <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Delete content {item.title}</span>
           </Button>
         </div>
       </CardFooter>

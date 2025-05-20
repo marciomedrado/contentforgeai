@@ -25,7 +25,8 @@ export interface AppSettings {
 
 export interface ThemeSuggestion {
   id: string;
-  topic: string; // The original topic that generated this theme
-  theme: string; // The suggested theme
-  generatedAt: string; // ISO date string
+  userInputTopic: string; // The general topic input by the user
+  title: string;          // Suggested title for a piece of content
+  description: string;    // Suggested brief description or angle for the content
+  generatedAt: string;    // ISO date string
 }
