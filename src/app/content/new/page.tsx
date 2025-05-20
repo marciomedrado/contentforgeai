@@ -1,13 +1,12 @@
 
 import { AppHeader } from '@/components/layout/AppHeader';
 import { ContentFormClient } from '@/components/content/ContentFormClient';
-import type { ReferenceMaterial } from '@/lib/types';
 
 interface NewContentPageProps {
   searchParams?: {
     title?: string;
     topic?: string;
-    research?: string; // JSON string of ResearchLinkItem[]
+    // research?: string; // JSON string of ResearchLinkItem[] - Removed
     manualRefs?: string; // JSON string of string[] (manual reference texts)
   };
 }
@@ -16,15 +15,6 @@ export default function NewContentPage({ searchParams }: NewContentPageProps) {
   const initialTitle = searchParams?.title;
   const initialTopic = searchParams?.topic;
   
-  let initialResearchItems: ReferenceMaterial[] | undefined = undefined;
-  if (searchParams?.research) {
-    try {
-      initialResearchItems = JSON.parse(searchParams.research);
-    } catch (e) {
-      console.error("Failed to parse research items from query params:", e);
-    }
-  }
-
   let initialManualReferenceTexts: string[] | undefined = undefined;
   if (searchParams?.manualRefs) {
     try {
@@ -41,7 +31,6 @@ export default function NewContentPage({ searchParams }: NewContentPageProps) {
         <ContentFormClient 
           initialTitle={initialTitle} 
           initialTopic={initialTopic} 
-          initialReferenceItems={initialResearchItems}
           initialManualReferenceTexts={initialManualReferenceTexts}
         />
       </main>

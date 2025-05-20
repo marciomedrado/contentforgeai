@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -5,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { AppSettings, ThemeSuggestion, ResearchLinkItem, ManualReferenceItem } from '@/lib/types';
+import type { AppSettings, ThemeSuggestion, ManualReferenceItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,18 +14,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { suggestThemes } from '@/ai/flows/proactive-theme-planning';
-import { findResearchLinks } from '@/ai/flows/find-research-links';
+import { suggestHashtags } from '@/ai/flows/smart-hashtag-suggestions'; // Renamed import for clarity if needed
 import { 
   getStoredSettings, 
   addThemeSuggestion, 
   getStoredThemeSuggestions, 
   deleteThemeSuggestionById,
-  updateThemeSuggestionWithLinks,
-  deleteResearchLinkFromTheme,
   addManualReferenceToTheme,
   deleteManualReferenceFromTheme,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, Search, Link as LinkIcon, ExternalLink, FileText, CheckSquare, Square, MessageSquare } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, Search, FileText, CheckSquare, Square, MessageSquare, Tags } from 'lucide-react';
 import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,14 +58,6 @@ const themePlannerSchema = z.object({
 
 type ThemePlannerFormData = z.infer<typeof themePlannerSchema>;
 
-interface FindLinksFormData {
-  numLinks: number;
-}
-
-const findLinksSchema = z.object({
-  numLinks: z.coerce.number().min(1).max(5).default(3),
-});
-
 interface AddManualRefFormData {
   title: string;
   content: string;
@@ -82,27 +73,18 @@ export function ThemePlannerClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoadingThemes, setIsLoadingThemes] = useState(false);
-  const [isLoadingLinks, setIsLoadingLinks] = useState<string | null>(null); // Store themeId being processed
-  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'researchLinks' | 'manualReferences'>[]>([]);
+  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'>[]>([]);
   
-  const [currentSettings, setCurrentSettings] = useState<AppSettings | null>(null);
+  const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings());
   const [storedThemeSuggestions, setStoredThemeSuggestions] = useState<ThemeSuggestion[]>([]);
   const [currentUserInputTopic, setCurrentUserInputTopic] = useState<string>("");
 
-  // State for managing selected research items for each theme
-  const [selectedResearchItems, setSelectedResearchItems] = useState<Record<string, Record<string, boolean>>>({});
-  // State for managing selected manual references for each theme
   const [selectedManualReferences, setSelectedManualReferences] = useState<Record<string, Record<string, boolean>>>({});
-
-
-  const [currentThemeForLinks, setCurrentThemeForLinks] = useState<ThemeSuggestion | null>(null);
   const [currentThemeForManualRef, setCurrentThemeForManualRef] = useState<ThemeSuggestion | null>(null);
+  
+  const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null); // themeId or null
+  const [suggestedKeywordsMap, setSuggestedKeywordsMap] = useState<Record<string, string[]>>({}); // themeId -> keywords[]
 
-
-  const findLinksForm = useForm<FindLinksFormData>({
-    resolver: zodResolver(findLinksSchema),
-    defaultValues: { numLinks: 3 },
-  });
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -150,7 +132,7 @@ export function ThemePlannerClient() {
         numSuggestions: data.numSuggestions,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
       });
-      setGeneratedThemesList(result.themes);
+      setGeneratedThemesList(result.themes); // This will now include keywords
       toast({ title: "Themes Suggested!", description: "AI has generated theme ideas for your topic." });
     } catch (error) {
       console.error("Theme suggestion error:", error);
@@ -160,15 +142,14 @@ export function ThemePlannerClient() {
     setIsLoadingThemes(false);
   };
 
-  const handleSaveTheme = (theme: Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'researchLinks' | 'manualReferences'>) => {
+  const handleSaveTheme = (theme: Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'>) => {
     const newSuggestion: ThemeSuggestion = {
       id: Date.now().toString(),
       userInputTopic: currentUserInputTopic,
       title: theme.title,
       description: theme.description,
-      keywords: theme.keywords,
+      keywords: theme.keywords, // Save initial keywords
       generatedAt: new Date().toISOString(),
-      researchLinks: [],
       manualReferences: [],
     };
     addThemeSuggestion(newSuggestion);
@@ -178,69 +159,17 @@ export function ThemePlannerClient() {
 
   const handleDeleteTheme = useCallback((id: string) => {
     deleteThemeSuggestionById(id);
-    refreshStoredThemes();
+    // Also clear any transient suggested keywords for this theme
+    setSuggestedKeywordsMap(prev => {
+      const newMap = {...prev};
+      delete newMap[id];
+      return newMap;
+    });
+    refreshStoredThemes(); // This calls setStoredThemeSuggestions which should trigger re-render
     toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
   }, [toast, refreshStoredThemes]);
 
-  const handleOpenFindLinksModal = (theme: ThemeSuggestion) => {
-    setCurrentThemeForLinks(theme);
-    findLinksForm.reset({ numLinks: 3 }); // Reset form for next use
-  };
 
-  const onFindLinksSubmit: SubmitHandler<FindLinksFormData> = async (data) => {
-    if (!currentThemeForLinks) return;
-    const freshSettings = getStoredSettings();
-     if (!freshSettings?.openAIKey) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
-      return;
-    }
-    
-    setIsLoadingLinks(currentThemeForLinks.id);
-    try {
-      const result = await findResearchLinks({
-        topic: currentThemeForLinks.title + " " + currentThemeForLinks.description,
-        numLinks: data.numLinks,
-        outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
-        perplexityApiKey: freshSettings.perplexityApiKey || undefined,
-      });
-      
-      const linksWithClientIds: ResearchLinkItem[] = result.links.map(link => ({
-        ...link,
-        id: link.url + '_' + Date.now().toString(), // Simple client-side ID
-      }));
-
-      updateThemeSuggestionWithLinks(currentThemeForLinks.id, linksWithClientIds);
-      refreshStoredThemes();
-      toast({ title: "Research Links Found!", description: `Found ${linksWithClientIds.length} links for "${currentThemeForLinks.title}".` });
-    } catch (error: any) {
-      console.error("Find research links error:", error);
-      toast({ title: "AI Error", description: `Failed to find research links: ${error.message || "Check console."}`, variant: "destructive", duration: 7000 });
-    }
-    setIsLoadingLinks(null);
-    setCurrentThemeForLinks(null); // Close dialog by resetting current theme
-  };
-
-  const handleDeleteResearchLink = useCallback((themeId: string, researchLinkId: string) => {
-    deleteResearchLinkFromTheme(themeId, researchLinkId);
-    refreshStoredThemes();
-    // Also remove from selection state if it was selected
-    setSelectedResearchItems(prev => {
-      const newThemeSelection = { ...(prev[themeId] || {}) };
-      delete newThemeSelection[researchLinkId];
-      return { ...prev, [themeId]: newThemeSelection };
-    });
-    toast({ title: "Research Link Deleted", description: "The research link has been removed." });
-  }, [refreshStoredThemes]);
-
-  // Toggle selection for a research item
-  const toggleResearchItemSelection = (themeId: string, researchItemId: string) => {
-    setSelectedResearchItems(prev => {
-      const newThemeSelection = { ...(prev[themeId] || {}) };
-      newThemeSelection[researchItemId] = !newThemeSelection[researchItemId];
-      return { ...prev, [themeId]: newThemeSelection };
-    });
-  };
-  
   const handleOpenManualRefModal = (theme: ThemeSuggestion) => {
     setCurrentThemeForManualRef(theme);
     manualRefForm.reset({ title: "", content: ""});
@@ -264,12 +193,12 @@ export function ThemePlannerClient() {
 
   const handleDeleteManualRef = useCallback((themeId: string, refId: string) => {
     deleteManualReferenceFromTheme(themeId, refId);
-    refreshStoredThemes();
     setSelectedManualReferences(prev => {
         const newThemeSelection = { ...(prev[themeId] || {}) };
         delete newThemeSelection[refId];
         return { ...prev, [themeId]: newThemeSelection };
     });
+    refreshStoredThemes();
     toast({ title: "Manual Reference Deleted", description: "The manual reference has been removed." });
   }, [refreshStoredThemes]);
 
@@ -281,12 +210,30 @@ export function ThemePlannerClient() {
     });
   };
 
+  const handleSuggestKeywordsForTheme = async (theme: ThemeSuggestion) => {
+    const freshSettings = getStoredSettings();
+    if (!freshSettings?.openAIKey) {
+      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
+      return;
+    }
+    setIsLoadingSuggestedKeywords(theme.id);
+    try {
+      const result = await suggestHashtags({
+        text: `${theme.title} ${theme.description}`,
+        platform: 'general' as any, // Use a generic platform type or adapt flow
+      });
+      setSuggestedKeywordsMap(prev => ({...prev, [theme.id]: result.hashtags }));
+      toast({ title: "Keywords Suggested!", description: "AI has suggested additional keywords/hashtags." });
+    } catch (error) {
+      console.error("Keyword suggestion error:", error);
+      toast({ title: "AI Error", description: "Failed to suggest keywords. Check console for details.", variant: "destructive" });
+      setSuggestedKeywordsMap(prev => ({...prev, [theme.id]: [] }));
+    }
+    setIsLoadingSuggestedKeywords(null);
+  };
+
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
-    const selectedLinks = (theme.researchLinks || [])
-      .filter(link => selectedResearchItems[theme.id]?.[link.id])
-      .map(link => ({ title: link.title, url: link.url, summary: link.summary, abntCitation: link.abntCitation }));
-    
     const selectedManualRefs = (theme.manualReferences || [])
       .filter(ref => selectedManualReferences[theme.id]?.[ref.id])
       .map(ref => ref.content);
@@ -294,9 +241,7 @@ export function ThemePlannerClient() {
     const queryParams = new URLSearchParams();
     queryParams.append('title', theme.title);
     queryParams.append('topic', theme.description); // Theme description becomes the initial topic/brief
-    if (selectedLinks.length > 0) {
-      queryParams.append('research', JSON.stringify(selectedLinks));
-    }
+    
     if (selectedManualRefs.length > 0) {
       queryParams.append('manualRefs', JSON.stringify(selectedManualRefs));
     }
@@ -394,7 +339,7 @@ export function ThemePlannerClient() {
         <Card>
           <CardHeader>
             <CardTitle>Saved Theme Ideas</CardTitle>
-            <CardDescription>Manage your saved themes, find research, add manual notes, and create content.</CardDescription>
+            <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {storedThemeSuggestions.map((suggestion) => (
@@ -405,7 +350,7 @@ export function ThemePlannerClient() {
                     <p className="text-sm text-muted-foreground break-words whitespace-pre-wrap">{suggestion.description}</p>
                     {suggestion.keywords && suggestion.keywords.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1 items-center">
-                          <span className="text-xs font-medium mr-1 text-muted-foreground">Keywords:</span>
+                          <span className="text-xs font-medium mr-1 text-muted-foreground">Initial Keywords:</span>
                           {suggestion.keywords.map(kw => <Badge variant="outline" key={kw} className="text-xs">{kw}</Badge>)}
                         </div>
                     )}
@@ -428,7 +373,7 @@ export function ThemePlannerClient() {
                             <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/> Are you absolutely sure?
                           </AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the theme idea titled "{suggestion.title}" and all its associated research links and manual notes.
+                            This action cannot be undone. This will permanently delete the theme idea titled "{suggestion.title}" and all its associated manual notes.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -442,97 +387,26 @@ export function ThemePlannerClient() {
                   </div>
                 </div>
                 
-                {/* Research Links Section */}
+                {/* Keyword/Hashtag Suggestion Section */}
                 <div className="my-4 p-3 border-t border-dashed">
                   <div className="flex justify-between items-center mb-2">
-                    <h5 className="text-md font-semibold flex items-center"><Search className="mr-2 h-5 w-5 text-primary"/>AI-Found Research</h5>
-                     <Dialog onOpenChange={(isOpen) => !isOpen && setCurrentThemeForLinks(null)}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" onClick={() => handleOpenFindLinksModal(suggestion)} disabled={isLoadingLinks === suggestion.id}>
-                          {isLoadingLinks === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4" />} Find Research
-                        </Button>
-                      </DialogTrigger>
-                      {currentThemeForLinks?.id === suggestion.id && (
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Find Research Links for "{currentThemeForLinks.title}"</DialogTitle>
-                            <DialogDescription>
-                              How many research links/summaries should the AI try to find? (1-5)
-                            </DialogDescription>
-                          </DialogHeader>
-                          <Form {...findLinksForm}>
-                            <form onSubmit={findLinksForm.handleSubmit(onFindLinksSubmit)} className="space-y-4">
-                              <FormField
-                                control={findLinksForm.control}
-                                name="numLinks"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel htmlFor={`numLinks-${suggestion.id}`}>Number of Links</FormLabel>
-                                    <FormControl>
-                                      <Input id={`numLinks-${suggestion.id}`} type="number" min="1" max="5" {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              <DialogFooter>
-                                <DialogClose asChild>
-                                   <Button type="button" variant="ghost">Cancel</Button>
-                                </DialogClose>
-                                <Button type="submit" disabled={isLoadingLinks === suggestion.id}>
-                                  {isLoadingLinks === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4" />} Get Links
-                                </Button>
-                              </DialogFooter>
-                            </form>
-                          </Form>
-                        </DialogContent>
-                      )}
-                    </Dialog>
+                    <h5 className="text-md font-semibold flex items-center"><Tags className="mr-2 h-5 w-5 text-primary"/>AI Keyword/Hashtag Ideas</h5>
+                    <Button variant="outline" size="sm" onClick={() => handleSuggestKeywordsForTheme(suggestion)} disabled={isLoadingSuggestedKeywords === suggestion.id}>
+                      {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Keywords/Hashtags
+                    </Button>
                   </div>
-                  {suggestion.researchLinks && suggestion.researchLinks.length > 0 ? (
-                    <ul className="space-y-3">
-                      {suggestion.researchLinks.map(link => (
-                        <li key={link.id} className="p-3 border rounded-md bg-background">
-                          <div className="flex items-center mb-2">
-                            <Checkbox
-                                id={`research-${suggestion.id}-${link.id}`}
-                                checked={!!selectedResearchItems[suggestion.id]?.[link.id]}
-                                onCheckedChange={() => toggleResearchItemSelection(suggestion.id, link.id)}
-                                className="mr-3"
-                            />
-                            <UiLabel htmlFor={`research-${suggestion.id}-${link.id}`} className="flex-1">
-                                <h6 className="font-medium text-sm hover:underline cursor-pointer">
-                                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
-                                    {link.title} <ExternalLink className="ml-1 h-3 w-3" />
-                                  </a>
-                                </h6>
-                            </UiLabel>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Research Link?</AlertDialogTitle>
-                                  <AlertDialogDescription>Permanently delete the research item "{link.title}"?</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteResearchLink(suggestion.id, link.id)} className="bg-destructive">Delete</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                          <p className="text-xs text-muted-foreground pl-7 line-clamp-3">{link.summary || "No summary available."}</p>
-                        </li>
+                  {suggestedKeywordsMap[suggestion.id] && suggestedKeywordsMap[suggestion.id].length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {suggestedKeywordsMap[suggestion.id].map((keyword, index) => (
+                        <Badge key={`${keyword}-${index}`} variant="secondary">{keyword.startsWith('#') ? keyword : `#${keyword}`}</Badge>
                       ))}
-                    </ul>
+                    </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">No research links found or added yet for this theme.</p>
+                    isLoadingSuggestedKeywords !== suggestion.id && <p className="text-xs text-muted-foreground">No additional keywords suggested yet for this theme. Click the button to generate some.</p>
                   )}
+                  {isLoadingSuggestedKeywords === suggestion.id && <p className="text-xs text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Generating keywords...</p>}
                 </div>
+
 
                 {/* Manual References Section */}
                 <div className="my-4 p-3 border-t border-dashed">

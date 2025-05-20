@@ -1,5 +1,5 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion, ResearchLinkItem, ManualReferenceItem } from './types';
+import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem } from './types';
 import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY } from './constants';
 
 // Helper to safely interact with localStorage
@@ -27,22 +27,6 @@ const safeLocalStorageSet = <T,>(key: string, value: T): void => {
     }));
   } catch (error) {
     console.error(`Error setting item ${key} in localStorage`, error);
-  }
-};
-
-const safeLocalStorageRemove = (key: string): void => {
-  if (typeof window === 'undefined') return;
-  try {
-    const oldValue = window.localStorage.getItem(key);
-    window.localStorage.removeItem(key);
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: key,
-      oldValue: oldValue,
-      newValue: null,
-      storageArea: window.localStorage
-    }));
-  } catch (error) {
-    console.error(`Error removing item ${key} from localStorage`, error);
   }
 };
 
@@ -118,24 +102,6 @@ export const deleteThemeSuggestionById = (id: string): void => {
 
 export const clearAllThemeSuggestions = (): void => {
   safeLocalStorageSet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, []);
-};
-
-export const updateThemeSuggestionWithLinks = (themeId: string, researchLinks: ResearchLinkItem[]): void => {
-  const themes = getStoredThemeSuggestions();
-  const themeIndex = themes.findIndex(t => t.id === themeId);
-  if (themeIndex > -1) {
-    themes[themeIndex].researchLinks = [...(themes[themeIndex].researchLinks || []), ...researchLinks];
-    saveStoredThemeSuggestions(themes);
-  }
-};
-
-export const deleteResearchLinkFromTheme = (themeId: string, researchLinkId: string): void => {
-  const themes = getStoredThemeSuggestions();
-  const themeIndex = themes.findIndex(t => t.id === themeId);
-  if (themeIndex > -1 && themes[themeIndex].researchLinks) {
-    themes[themeIndex].researchLinks = themes[themeIndex].researchLinks?.filter(link => link.id !== researchLinkId);
-    saveStoredThemeSuggestions(themes);
-  }
 };
 
 export const addManualReferenceToTheme = (themeId: string, reference: ManualReferenceItem): void => {

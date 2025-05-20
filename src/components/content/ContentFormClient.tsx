@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings, ReferenceMaterial } from '@/lib/types';
+import type { ContentItem, Platform, AppSettings } from '@/lib/types';
 import { PLATFORM_OPTIONS, DEFAULT_IMAGE_PROMPT_FREQUENCY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,15 +38,14 @@ interface ContentFormClientProps {
   contentId?: string;
   initialTitle?: string;
   initialTopic?: string;
-  initialReferenceItems?: ReferenceMaterial[];
   initialManualReferenceTexts?: string[];
+  // initialReferenceItems?: Array<{ title: string; url: string; summary: string }>; // Removed
 }
 
 export function ContentFormClient({ 
   contentId, 
   initialTitle, 
   initialTopic, 
-  initialReferenceItems,
   initialManualReferenceTexts,
 }: ContentFormClientProps) {
   const router = useRouter();
@@ -62,8 +61,6 @@ export function ContentFormClient({
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings()); 
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
 
-  // Store the initial reference items passed via props
-  const [referenceItemsForDisplay, setReferenceItemsForDisplay] = useState<ReferenceMaterial[]>(initialReferenceItems || []);
   const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
 
 
@@ -97,7 +94,6 @@ export function ContentFormClient({
         setGeneratedContent(content.content);
         setImagePrompts(content.imagePrompts);
         setSuggestedHashtags(content.hashtags || []);
-        setReferenceItemsForDisplay(content.referenceLinksUsed || []);
         setManualReferencesForDisplay(content.manualReferencesUsed?.map(mr => mr.content) || []);
       } else {
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
@@ -109,11 +105,10 @@ export function ContentFormClient({
       if (!initialTitle && initialTopic && !form.getValues('title')) {
            form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
       }
-      setReferenceItemsForDisplay(initialReferenceItems || []);
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialReferenceItems, initialManualReferenceTexts, form, router, toast]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast]);
 
   const selectedPlatform = form.watch('platform');
 
@@ -138,7 +133,6 @@ export function ContentFormClient({
         apiKey: freshSettings.openAIKey,
         agentId: freshSettings.openAIAgentId || undefined,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
-        referenceItems: referenceItemsForDisplay.length > 0 ? referenceItemsForDisplay : undefined,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
       });
       setGeneratedContent(result.content);
@@ -157,7 +151,6 @@ export function ContentFormClient({
   };
 
   const handleSuggestHashtags = async () => {
-    // ... (existing hashtag logic remains same)
     if (!generatedContent) {
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
@@ -197,7 +190,6 @@ export function ContentFormClient({
       status: existingContent?.status || 'Draft',
       createdAt: existingContent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      referenceLinksUsed: referenceItemsForDisplay.length > 0 ? referenceItemsForDisplay : undefined,
       manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(content => ({content})) : undefined,
     };
 
@@ -240,7 +232,7 @@ export function ContentFormClient({
               <FormField
                 control={form.control}
                 name="platform"
-                render={({ field }) => ( /* ... existing platform field ... */ 
+                render={({ field }) => ( 
                   <FormItem>
                     <FormLabel>Platform</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -263,7 +255,7 @@ export function ContentFormClient({
                 <FormField
                   control={form.control}
                   name="imagePromptFrequency"
-                  render={({ field }) => ( /* ... existing imagePromptFrequency field ... */ 
+                  render={({ field }) => ( 
                     <FormItem>
                       <FormLabel>Image Prompt Frequency (words)</FormLabel>
                       <FormControl>
@@ -313,29 +305,16 @@ export function ContentFormClient({
               )}
             />
             
-            {(referenceItemsForDisplay.length > 0 || manualReferencesForDisplay.length > 0) && (
+            {manualReferencesForDisplay.length > 0 && (
               <Accordion type="single" collapsible className="w-full">
                 <AccordionItem value="references">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
-                      Reference Materials Used for Generation
+                       Manual Reference Materials Used for Generation
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3 pt-2">
-                    {referenceItemsForDisplay.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold text-sm mb-1">AI-Found Research:</h4>
-                        <ul className="list-disc list-inside space-y-1 pl-2">
-                          {referenceItemsForDisplay.map((item, index) => (
-                            <li key={`research-${index}`} className="text-xs">
-                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{item.title}</a>
-                              <p className="text-muted-foreground italic truncate">{item.summary.substring(0,100)}...</p>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
                      {manualReferencesForDisplay.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-sm mb-1 mt-2">Manual Notes/References:</h4>
