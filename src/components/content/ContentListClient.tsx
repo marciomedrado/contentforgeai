@@ -37,17 +37,14 @@ export function ContentListClient() {
     };
   }, [refreshContentItems]);
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this content item?")) {
-      deleteContentItemById(id);
-      // Directly update state after deletion
-      setAllItems(getStoredContentItems()); 
-      toast({
-        title: "Content Deleted",
-        description: "The content item has been successfully deleted.",
-      });
-    }
-  };
+  const handleDelete = useCallback((id: string) => {
+    deleteContentItemById(id);
+    setAllItems(getStoredContentItems()); // Re-fetch from localStorage and update state
+    toast({
+      title: "Content Deleted",
+      description: "The content item has been successfully deleted.",
+    });
+  }, [toast]); // setAllItems is stable, getStoredContentItems is a stable import
 
   const filteredItems = useMemo(() => {
     return allItems.filter(item => {

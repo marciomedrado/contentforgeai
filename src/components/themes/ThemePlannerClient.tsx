@@ -117,11 +117,11 @@ export function ThemePlannerClient() {
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
 
-  const handleDeleteTheme = (id: string) => {
+  const handleDeleteTheme = useCallback((id: string) => {
     deleteThemeSuggestionById(id);
-    setStoredThemeSuggestions(getStoredThemeSuggestions());
+    setStoredThemeSuggestions(getStoredThemeSuggestions()); // Re-fetch from localStorage
     toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
-  };
+  }, [toast]); // setStoredThemeSuggestions is stable, getStoredThemeSuggestions is a stable import
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
     router.push(`/content/new?title=${encodeURIComponent(theme.title)}&topic=${encodeURIComponent(theme.description)}`);
