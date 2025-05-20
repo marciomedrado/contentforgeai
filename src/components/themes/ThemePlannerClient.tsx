@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { suggestThemes } from '@/ai/flows/proactive-theme-planning';
 import { getStoredSettings, addThemeSuggestion, getStoredThemeSuggestions, deleteThemeSuggestionById } from '@/lib/storageService';
 import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2 } from 'lucide-react';
+import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/constants';
 
 const themePlannerSchema = z.object({
   topic: z.string().min(5, "Topic must be at least 5 characters."),
@@ -35,14 +36,22 @@ export function ThemePlannerClient() {
   const refreshStoredThemes = useCallback(() => {
     setStoredThemeSuggestions(getStoredThemeSuggestions());
   }, []);
+  
+  const refreshSettings = useCallback(() => {
+    setCurrentSettings(getStoredSettings());
+  }, []);
+
 
   useEffect(() => {
-    setCurrentSettings(getStoredSettings());
+    refreshSettings();
     refreshStoredThemes();
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'contentForgeAi_themeSuggestions') {
+      if (event.key === THEMES_STORAGE_KEY) {
         refreshStoredThemes();
+      }
+      if (event.key === SETTINGS_STORAGE_KEY) {
+        refreshSettings();
       }
     };
     window.addEventListener('storage', handleStorageChange);
@@ -50,7 +59,7 @@ export function ThemePlannerClient() {
       window.removeEventListener('storage', handleStorageChange);
     };
 
-  }, [refreshStoredThemes]);
+  }, [refreshStoredThemes, refreshSettings]);
 
   const form = useForm<ThemePlannerFormData>({
     resolver: zodResolver(themePlannerSchema),
@@ -61,10 +70,12 @@ export function ThemePlannerClient() {
   });
 
   const onSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
-    if (!currentSettings?.openAIKey) {
+    const freshSettings = getStoredSettings(); // Get latest settings
+    if (!freshSettings?.openAIKey) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings.", variant: "destructive" });
       return;
     }
+    setCurrentSettings(freshSettings); // Update local state if needed
     setIsLoading(true);
     setCurrentUserInputTopic(data.topic); 
     try {
@@ -91,17 +102,18 @@ export function ThemePlannerClient() {
       generatedAt: new Date().toISOString(),
     };
     addThemeSuggestion(newSuggestion);
-    refreshStoredThemes(); // Refresh list from storage
+    setStoredThemeSuggestions(getStoredThemeSuggestions()); // Refresh list from storage
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
   
-  const handleDeleteTheme = useCallback((id: string) => {
+  const handleDeleteTheme = (id: string) => {
     if (window.confirm("Are you sure you want to delete this theme idea?")) {
       deleteThemeSuggestionById(id);
-      refreshStoredThemes(); // Refresh list from storage
+      // Directly update state after deletion
+      setStoredThemeSuggestions(getStoredThemeSuggestions()); 
       toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
     }
-  }, [toast, refreshStoredThemes]);
+  };
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
     router.push(`/content/new?title=${encodeURIComponent(theme.title)}&topic=${encodeURIComponent(theme.description)}`);

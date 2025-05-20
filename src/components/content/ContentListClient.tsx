@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { parseISO, startOfDay, endOfDay } from 'date-fns';
+import { CONTENT_STORAGE_KEY } from '@/lib/constants';
 
 export function ContentListClient() {
   const [allItems, setAllItems] = useState<ContentItem[]>([]);
@@ -25,9 +26,8 @@ export function ContentListClient() {
     refreshContentItems();
     setIsLoading(false);
 
-    // Listen for storage changes to update list if modified in another tab/window
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'contentForgeAi_contentItems') {
+      if (event.key === CONTENT_STORAGE_KEY) {
         refreshContentItems();
       }
     };
@@ -37,16 +37,17 @@ export function ContentListClient() {
     };
   }, [refreshContentItems]);
 
-  const handleDelete = useCallback((id: string) => {
+  const handleDelete = (id: string) => {
     if (window.confirm("Are you sure you want to delete this content item?")) {
-      deleteContentItemById(id); // Use the renamed function
-      refreshContentItems(); // Re-fetch from storage to ensure UI is in sync
+      deleteContentItemById(id);
+      // Directly update state after deletion
+      setAllItems(getStoredContentItems()); 
       toast({
         title: "Content Deleted",
         description: "The content item has been successfully deleted.",
       });
     }
-  }, [toast, refreshContentItems]);
+  };
 
   const filteredItems = useMemo(() => {
     return allItems.filter(item => {
@@ -67,7 +68,6 @@ export function ContentListClient() {
   }, [allItems, filters]);
 
   if (isLoading) {
-     // Basic skeleton while loading
     return (
       <div className="space-y-6">
         <ContentFilters filters={filters} onFiltersChange={setFilters} />
