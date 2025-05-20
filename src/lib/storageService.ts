@@ -3,7 +3,7 @@ import type { ContentItem, AppSettings, ThemeSuggestion } from './types';
 import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY } from './constants';
 
 // Helper to safely interact with localStorage
-const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
+const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
   try {
     const item = window.localStorage.getItem(key);
@@ -14,15 +14,36 @@ const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
   }
 };
 
-const safeLocalStorageSet = <T>(key: string, value: T): void => {
+const safeLocalStorageSet = <T,>(key: string, value: T): void => {
   if (typeof window === 'undefined') return;
   try {
+    const oldValue = window.localStorage.getItem(key);
     window.localStorage.setItem(key, JSON.stringify(value));
     // Dispatch a storage event so other components using the same key can update
-    // Correctly pass the key that was changed
-    window.dispatchEvent(new StorageEvent('storage', { key: key }));
+    window.dispatchEvent(new StorageEvent('storage', { 
+      key: key,
+      oldValue: oldValue,
+      newValue: JSON.stringify(value),
+      storageArea: window.localStorage
+    }));
   } catch (error) {
     console.error(`Error setting item ${key} in localStorage`, error);
+  }
+};
+
+const safeLocalStorageRemove = (key: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    const oldValue = window.localStorage.getItem(key);
+    window.localStorage.removeItem(key);
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: key,
+      oldValue: oldValue,
+      newValue: null,
+      storageArea: window.localStorage
+    }));
+  } catch (error) {
+    console.error(`Error removing item ${key} from localStorage`, error);
   }
 };
 
@@ -53,6 +74,10 @@ export const getContentItemById = (id: string): ContentItem | undefined => {
 export const deleteContentItemById = (id: string): void => {
   const items = getStoredContentItems();
   saveStoredContentItems(items.filter(item => item.id !== id));
+};
+
+export const clearAllContentItems = (): void => {
+  safeLocalStorageRemove(CONTENT_STORAGE_KEY);
 };
 
 
@@ -90,4 +115,17 @@ export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
 export const deleteThemeSuggestionById = (id: string): void => {
   const themes = getStoredThemeSuggestions();
   saveStoredThemeSuggestions(themes.filter(theme => theme.id !== id));
+};
+
+export const clearAllThemeSuggestions = (): void => {
+  safeLocalStorageRemove(THEMES_STORAGE_KEY);
+};
+
+export const clearAllData = (): void => {
+  clearAllContentItems();
+  clearAllThemeSuggestions();
+  // Note: AppSettings are not cleared by this function by default,
+  // as API keys are often preserved. If settings also need to be cleared,
+  // add: safeLocalStorageRemove(SETTINGS_STORAGE_KEY);
+  // and ensure getStoredSettings() handles a completely empty state gracefully.
 };
