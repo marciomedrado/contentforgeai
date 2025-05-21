@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { FileText, Instagram, FacebookIcon, Edit3, Trash2, CalendarDays, AlertTriangle } from 'lucide-react';
+import { FileText, Instagram, FacebookIcon, Edit3, Trash2, CalendarDays, AlertTriangle, Eye } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
@@ -37,7 +37,11 @@ export function ContentCard({ item, onDelete }: ContentCardProps) {
     <Card className="flex flex-col">
       <CardHeader>
         <div className="flex justify-between items-start">
-          <CardTitle className="text-lg mb-1">{item.title}</CardTitle>
+          <Link href={`/content/${item.id}/preview`} passHref legacyBehavior>
+            <a className="hover:underline group">
+              <CardTitle className="text-lg mb-1 group-hover:text-primary transition-colors">{item.title}</CardTitle>
+            </a>
+          </Link>
           <PlatformIcon platform={item.platform} className="text-muted-foreground" />
         </div>
         <CardDescription className="flex items-center text-xs text-muted-foreground">
@@ -75,6 +79,12 @@ export function ContentCard({ item, onDelete }: ContentCardProps) {
           {item.status}
         </Badge>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/content/${item.id}/preview`} passHref>
+              <Eye className="h-4 w-4" />
+               <span className="sr-only">View content {item.title}</span>
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href={`/content/${item.id}/edit`} passHref>
               <Edit3 className="h-4 w-4" />
