@@ -20,8 +20,9 @@ import { HtmlEditor } from './HtmlEditor';
 import { useToast } from '@/hooks/use-toast';
 import { generateContentForPlatform } from '@/ai/flows/generate-content-for-platform';
 import { suggestHashtags as suggestHashtagsFlow } from '@/ai/flows/smart-hashtag-suggestions';
+import { generateImage as generateImageFlow } from '@/ai/flows/generate-image-flow'; // New import
 import { getStoredSettings, addContentItem, updateContentItem, getContentItemById } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIcon, FileText, BookOpen } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot } from 'lucide-react'; // Renamed ImageIcon
 import { Badge } from '@/components/ui/badge';
 
 const formSchema = z.object({
@@ -63,6 +64,9 @@ export function ContentFormClient({
 
   const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
   
+  const [generatingImageFor, setGeneratingImageFor] = useState<Record<number, boolean>>({});
+  const [generatedImages, setGeneratedImages] = useState<Record<number, string | null>>({});
+
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -78,8 +82,8 @@ export function ContentFormClient({
 
   useEffect(() => {
     const handleStorageChange = () => setCurrentSettings(getStoredSettings());
-    window.addEventListener('storage', handleStorageChange); // For settings changes
-    setCurrentSettings(getStoredSettings()); // Initial settings load
+    window.addEventListener('storage', handleStorageChange);
+    setCurrentSettings(getStoredSettings());
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -101,7 +105,7 @@ export function ContentFormClient({
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
         router.push('/');
       }
-    } else { // New content
+    } else {
       if (initialTitle) form.setValue('title', initialTitle);
       if (initialTopic) form.setValue('topic', initialTopic);
       if (!initialTitle && initialTopic && !form.getValues('title')) {
@@ -119,16 +123,16 @@ export function ContentFormClient({
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
-    const freshSettings = getStoredSettings(); // Fetch fresh settings for API key etc.
     
     setIsLoadingAi(true);
+    setGeneratedImages({}); // Clear previously generated images
     try {
       const result = await generateContentForPlatform({
         platform: platform as Platform,
         topic,
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
-        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined,
-        outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined, // Pass undefined for non-WP
+        outputLanguage: currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
       });
       setGeneratedContent(result.content);
@@ -165,6 +169,26 @@ export function ContentFormClient({
       toast({ title: "AI Error", description: "Failed to suggest hashtags. Check console for details.", variant: "destructive" });
     }
     setIsSuggestingHashtags(false);
+  };
+
+  const handleGenerateImage = async (promptText: string, promptIndex: number) => {
+    if (!promptText.trim()) {
+      toast({ title: "Prompt Required", description: "Image prompt cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setGeneratingImageFor(prev => ({ ...prev, [promptIndex]: true }));
+    setGeneratedImages(prev => ({ ...prev, [promptIndex]: null })); // Clear previous image for this prompt
+
+    try {
+      const result = await generateImageFlow({ prompt: promptText });
+      setGeneratedImages(prev => ({ ...prev, [promptIndex]: result.imageDataUri }));
+      toast({ title: "Image Generated!", description: "AI has generated an image for your prompt." });
+    } catch (error) {
+      console.error("AI image generation error:", error);
+      toast({ title: "AI Image Error", description: `Failed to generate image. Check console for details. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
+      setGeneratedImages(prev => ({ ...prev, [promptIndex]: 'error' })); // Indicate error
+    }
+    setGeneratingImageFor(prev => ({ ...prev, [promptIndex]: false }));
   };
 
   const onSubmit: SubmitHandler<ContentFormData> = async (data) => {
@@ -239,15 +263,15 @@ export function ContentFormClient({
                     <Select 
                       onValueChange={(value) => {
                         field.onChange(value);
-                        // If platform changes, clear generated content to encourage re-generation
                         if (existingContent && value !== originalPlatform) {
                           setGeneratedContent('');
                           setImagePrompts([]);
                           setSuggestedHashtags([]);
+                          setGeneratedImages({});
                         }
                       }} 
-                      value={field.value} // Ensure value is controlled
-                      defaultValue={field.value} // Set initial default
+                      value={field.value}
+                      defaultValue={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -332,8 +356,8 @@ export function ContentFormClient({
             />
             
             {hasManualReferences && (
-              <Accordion type="single" collapsible className="w-full" defaultValue="manual-reference-materials-accordion">
-                <AccordionItem value="manual-reference-materials-accordion">
+              <Accordion type="single" collapsible className="w-full" defaultValue="manual-reference-materials-accordion-initial">
+                <AccordionItem value="manual-reference-materials-accordion-initial">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
@@ -391,22 +415,46 @@ export function ContentFormClient({
         {imagePrompts.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center"><ImageIcon className="mr-2 h-5 w-5" /> Image Prompts</CardTitle>
+              <CardTitle className="flex items-center"><ImageIconLucide className="mr-2 h-5 w-5" /> Image Prompts & Generation</CardTitle>
               <CardDescription>Use these prompts to generate images for your content. You can edit them.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-4">
               {imagePrompts.map((prompt, index) => (
-                <Textarea
-                  key={index}
-                  value={prompt}
-                  onChange={(e) => {
-                    const newPrompts = [...imagePrompts];
-                    newPrompts[index] = e.target.value;
-                    setImagePrompts(newPrompts);
-                  }}
-                  rows={2}
-                  suppressHydrationWarning={true}
-                />
+                <div key={index} className="space-y-2 p-3 border rounded-md shadow-sm">
+                  <Label htmlFor={`image-prompt-${index}`}>Prompt {index + 1}</Label>
+                  <Textarea
+                    id={`image-prompt-${index}`}
+                    value={prompt}
+                    onChange={(e) => {
+                      const newPrompts = [...imagePrompts];
+                      newPrompts[index] = e.target.value;
+                      setImagePrompts(newPrompts);
+                    }}
+                    rows={2}
+                    suppressHydrationWarning={true}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleGenerateImage(prompt, index)} 
+                    disabled={generatingImageFor[index] || !prompt.trim()}
+                  >
+                    {generatingImageFor[index] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+                    Gerar Imagem
+                  </Button>
+                  {generatingImageFor[index] && <p className="text-xs text-muted-foreground">Gerando imagem, aguarde...</p>}
+                  {generatedImages[index] && generatedImages[index] !== 'error' && (
+                    <div className="mt-2">
+                      <img 
+                        src={generatedImages[index]!} 
+                        alt={`Generated for prompt: ${prompt.substring(0, 50)}...`} 
+                        className="rounded-md border max-w-xs max-h-xs object-contain"
+                      />
+                    </div>
+                  )}
+                  {generatedImages[index] === 'error' && <p className="text-xs text-destructive">Falha ao gerar imagem.</p>}
+                </div>
               ))}
             </CardContent>
           </Card>
