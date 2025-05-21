@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings, ReferenceItem } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES } from '@/lib/constants';
+import type { ContentItem, Platform, AppSettings, ManualReferenceItem } from '@/lib/types';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,7 +39,6 @@ interface ContentFormClientProps {
   initialTitle?: string;
   initialTopic?: string;
   initialManualReferenceTexts?: string[];
-  initialReferenceItems?: ReferenceItem[];
 }
 
 export function ContentFormClient({
@@ -47,7 +46,6 @@ export function ContentFormClient({
   initialTitle,
   initialTopic,
   initialManualReferenceTexts,
-  initialReferenceItems,
 }: ContentFormClientProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -61,11 +59,10 @@ export function ContentFormClient({
 
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings());
   const [existingContent, setExistingContent] = useState<ContentItem | null>(null);
+  const [originalPlatform, setOriginalPlatform] = useState<Platform | null>(null);
 
   const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
-  const [aiReferenceItemsForDisplay, setAiReferenceItemsForDisplay] = useState<ReferenceItem[]>(initialReferenceItems || []);
-
-
+  
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -77,15 +74,18 @@ export function ContentFormClient({
     },
   });
 
+  const platformFieldValue = form.watch('platform');
+
   useEffect(() => {
     const handleStorageChange = () => setCurrentSettings(getStoredSettings());
-    window.addEventListener('storage', handleStorageChange);
-    setCurrentSettings(getStoredSettings());
+    window.addEventListener('storage', handleStorageChange); // For settings changes
+    setCurrentSettings(getStoredSettings()); // Initial settings load
 
     if (contentId) {
       const content = getContentItemById(contentId);
       if (content) {
         setExistingContent(content);
+        setOriginalPlatform(content.platform);
         form.reset({
           title: content.title,
           platform: content.platform,
@@ -97,26 +97,21 @@ export function ContentFormClient({
         setImagePrompts(content.imagePrompts);
         setSuggestedHashtags(content.hashtags || []);
         setManualReferencesForDisplay(content.manualReferencesUsed?.map(mr => mr.content) || []);
-        // Assuming 'referenceItemsUsed' would be a new field if we were saving AI research items directly to ContentItem
-        // For now, if editing, AI research items are not re-loaded into display, only manual ones.
-        // setAiReferenceItemsForDisplay(content.referenceItemsUsed || []); 
       } else {
         toast({ title: "Error", description: "Content not found.", variant: "destructive" });
         router.push('/');
       }
-    } else {
+    } else { // New content
       if (initialTitle) form.setValue('title', initialTitle);
       if (initialTopic) form.setValue('topic', initialTopic);
       if (!initialTitle && initialTopic && !form.getValues('title')) {
            form.setValue('title', `${form.getValues('platform')} post about ${initialTopic.substring(0,30)}...`);
       }
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
-      setAiReferenceItemsForDisplay(initialReferenceItems || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, initialReferenceItems, form, router, toast]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast]);
 
-  const selectedPlatform = form.watch('platform');
 
   const handleGenerateContent = async () => {
     const { platform, topic, wordCount, numberOfImages } = form.getValues();
@@ -124,7 +119,7 @@ export function ContentFormClient({
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
-    const freshSettings = getStoredSettings();
+    const freshSettings = getStoredSettings(); // Fetch fresh settings for API key etc.
     
     setIsLoadingAi(true);
     try {
@@ -133,10 +128,8 @@ export function ContentFormClient({
         topic,
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
         numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined,
-        openAIAgentId: freshSettings.openAIAgentId || undefined,
         outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
-        referenceItems: aiReferenceItemsForDisplay.length > 0 ? aiReferenceItemsForDisplay : undefined,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
@@ -163,7 +156,7 @@ export function ContentFormClient({
     try {
       const result = await suggestHashtagsFlow({
         text: generatedContent,
-        platform: selectedPlatform.toLowerCase() as 'instagram' | 'facebook' | 'general',
+        platform: platformFieldValue.toLowerCase() as 'instagram' | 'facebook' | 'general',
       });
       setSuggestedHashtags(result.hashtags);
       toast({ title: "Hashtags Suggested!", description: "AI has suggested relevant hashtags." });
@@ -176,8 +169,14 @@ export function ContentFormClient({
 
   const onSubmit: SubmitHandler<ContentFormData> = async (data) => {
     setIsSaving(true);
-    const newContentItem: ContentItem = {
-      id: existingContent?.id || Date.now().toString(),
+
+    const isPlatformChanged = existingContent && originalPlatform && data.platform !== originalPlatform;
+    const currentContentId = existingContent && !isPlatformChanged ? existingContent.id : Date.now().toString();
+    const currentCreatedAt = existingContent && !isPlatformChanged ? existingContent.createdAt : new Date().toISOString();
+    const currentStatus = existingContent && !isPlatformChanged ? existingContent.status : 'Draft';
+
+    const contentItemToSave: ContentItem = {
+      id: currentContentId,
       title: data.title,
       platform: data.platform as Platform,
       topic: data.topic,
@@ -186,27 +185,26 @@ export function ContentFormClient({
       wordCount: data.wordCount && data.wordCount > 0 ? data.wordCount : undefined,
       numberOfImagesRequested: data.platform === 'Wordpress' ? data.numberOfImages : undefined,
       hashtags: suggestedHashtags,
-      status: existingContent?.status || 'Draft',
-      createdAt: existingContent?.createdAt || new Date().toISOString(),
+      status: currentStatus,
+      createdAt: currentCreatedAt,
       updatedAt: new Date().toISOString(),
       manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(text => ({content: text})) : undefined,
-      // If we want to store AI reference items used:
-      // referenceItemsUsed: aiReferenceItemsForDisplay.length > 0 ? aiReferenceItemsForDisplay : undefined,
     };
 
-    if (existingContent) {
-      updateContentItem(newContentItem);
+    if (existingContent && !isPlatformChanged) {
+      updateContentItem(contentItemToSave);
       toast({ title: "Content Updated", description: "Your content has been successfully updated." });
     } else {
-      addContentItem(newContentItem);
-      toast({ title: "Content Saved", description: "Your content has been saved as a draft." });
+      addContentItem(contentItemToSave);
+      toast({ title: "New Content Saved", description: "Content has been saved as a new draft." });
     }
 
     setIsSaving(false);
     router.push('/');
   };
-
-  const hasReferences = manualReferencesForDisplay.length > 0 || aiReferenceItemsForDisplay.length > 0;
+  
+  const hasManualReferences = manualReferencesForDisplay.length > 0;
+  const saveButtonText = existingContent && platformFieldValue === originalPlatform ? 'Update Content' : 'Save as New Draft';
 
   return (
     <Form {...form}>
@@ -238,7 +236,19 @@ export function ContentFormClient({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Platform</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select 
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        // If platform changes, clear generated content to encourage re-generation
+                        if (existingContent && value !== originalPlatform) {
+                          setGeneratedContent('');
+                          setImagePrompts([]);
+                          setSuggestedHashtags([]);
+                        }
+                      }} 
+                      value={field.value} // Ensure value is controlled
+                      defaultValue={field.value} // Set initial default
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a platform" />
@@ -254,7 +264,7 @@ export function ContentFormClient({
                   </FormItem>
                 )}
               />
-              {selectedPlatform === 'Wordpress' && (
+              {platformFieldValue === 'Wordpress' && (
                 <FormField
                   control={form.control}
                   name="numberOfImages"
@@ -290,7 +300,7 @@ export function ContentFormClient({
                 <FormItem>
                   <FormLabel>Topic / Main Idea / Brief</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Describe the main topic, idea, or paste the brief for the AI to generate content on..." {...field} rows={4} suppressHydrationWarning={true} />
+                    <Textarea placeholder="Describe the main topic, idea, or paste the brief for the AI to generate content on..." {...field} rows={4} suppressHydrationWarning={true}/>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -320,14 +330,14 @@ export function ContentFormClient({
                 </FormItem>
               )}
             />
-
-            {hasReferences && (
-              <Accordion type="single" collapsible className="w-full" defaultValue="reference-materials-accordion">
-                <AccordionItem value="reference-materials-accordion">
+            
+            {hasManualReferences && (
+              <Accordion type="single" collapsible className="w-full" defaultValue="manual-reference-materials-accordion">
+                <AccordionItem value="manual-reference-materials-accordion">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
-                       Reference Materials Used for Generation
+                       Manual Reference Materials Used for Generation
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3 pt-2">
@@ -343,23 +353,11 @@ export function ContentFormClient({
                         </ul>
                         </div>
                     )}
-                    {aiReferenceItemsForDisplay.length > 0 && (
-                        <div>
-                        <h4 className="font-semibold text-sm mb-1 mt-2">AI-Found Research Content:</h4>
-                        <ul className="list-disc list-inside space-y-2 pl-2">
-                            {aiReferenceItemsForDisplay.map((item, index) => (
-                            <li key={`ai-ref-display-${index}`} className="text-xs text-muted-foreground">
-                                <span className="font-medium not-italic text-foreground/80 block">From: {item.url}</span>
-                                <span className="italic whitespace-pre-wrap">{item.summary.length > 300 ? `${item.summary.substring(0,300)}...` : item.summary}</span>
-                            </li>
-                            ))}
-                        </ul>
-                        </div>
-                    )}
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
             )}
+
 
             <Button type="button" onClick={handleGenerateContent} disabled={isLoadingAi} className="w-full md:w-auto">
               {isLoadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -374,7 +372,7 @@ export function ContentFormClient({
               <CardTitle>Generated Content</CardTitle>
             </CardHeader>
             <CardContent>
-              {selectedPlatform === 'Wordpress' ? (
+              {platformFieldValue === 'Wordpress' ? (
                 <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} />
               ) : (
                 <Textarea
@@ -414,7 +412,7 @@ export function ContentFormClient({
           </Card>
         )}
 
-        {(selectedPlatform === 'Instagram' || selectedPlatform === 'Facebook') && generatedContent && (
+        {(platformFieldValue === 'Instagram' || platformFieldValue === 'Facebook') && generatedContent && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><Tags className="mr-2 h-5 w-5" /> Hashtags</CardTitle>
@@ -438,7 +436,7 @@ export function ContentFormClient({
         <CardFooter className="flex justify-end sticky bottom-0 bg-background py-4 border-t z-10">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            {existingContent ? 'Update Content' : 'Save Draft'}
+            {saveButtonText}
           </Button>
         </CardFooter>
       </form>
