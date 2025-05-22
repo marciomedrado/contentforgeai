@@ -1,6 +1,13 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem } from './types';
-import { DEFAULT_OUTPUT_LANGUAGE, CONTENT_STORAGE_KEY, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY, SUMMARIES_STORAGE_KEY } from './constants';
+import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt } from './types';
+import { 
+  DEFAULT_OUTPUT_LANGUAGE, 
+  CONTENT_STORAGE_KEY, 
+  SETTINGS_STORAGE_KEY, 
+  THEMES_STORAGE_KEY, 
+  SUMMARIES_STORAGE_KEY,
+  REFINEMENT_PROMPTS_STORAGE_KEY 
+} from './constants';
 
 // Helper to safely interact with localStorage
 const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
@@ -67,7 +74,7 @@ export const clearAllContentItems = (): void => {
 // App Settings
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
-    openAIKey: '', // Primarily for display, actual key from .env
+    openAIKey: '', 
     outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     perplexityApiKey: '',
   };
@@ -112,7 +119,7 @@ export const addManualReferenceToTheme = (themeId: string, reference: ManualRefe
     if (!themes[themeIndex].manualReferences) {
       themes[themeIndex].manualReferences = [];
     }
-    themes[themeIndex].manualReferences!.unshift(reference); // Add to the beginning
+    themes[themeIndex].manualReferences!.unshift(reference); 
     saveStoredThemeSuggestions(themes);
   }
 };
@@ -175,10 +182,37 @@ export const clearAllSummaries = (): void => {
   safeLocalStorageSet<SummarizationItem[]>(SUMMARIES_STORAGE_KEY, []);
 };
 
+// Saved Refinement Prompts
+export const getSavedRefinementPrompts = (): SavedRefinementPrompt[] => {
+  return safeLocalStorageGet<SavedRefinementPrompt[]>(REFINEMENT_PROMPTS_STORAGE_KEY, []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+export const saveStoredRefinementPrompts = (prompts: SavedRefinementPrompt[]): void => {
+  safeLocalStorageSet<SavedRefinementPrompt[]>(REFINEMENT_PROMPTS_STORAGE_KEY, prompts.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+};
+
+export const addSavedRefinementPrompt = (prompt: SavedRefinementPrompt): void => {
+  const prompts = getSavedRefinementPrompts();
+  const existingIndex = prompts.findIndex(p => p.name.toLowerCase() === prompt.name.toLowerCase());
+  if (existingIndex > -1) {
+    // Update existing prompt if name matches
+    prompts[existingIndex] = { ...prompt, id: prompts[existingIndex].id }; // Keep original id
+  } else {
+    prompts.unshift(prompt);
+  }
+  saveStoredRefinementPrompts(prompts);
+};
+
+export const deleteSavedRefinementPromptById = (id: string): void => {
+  const prompts = getSavedRefinementPrompts();
+  saveStoredRefinementPrompts(prompts.filter(p => p.id !== id));
+};
+
 
 // General Data Clearing
 export const clearAllData = (): void => {
   clearAllContentItems();
   clearAllThemeSuggestions();
   clearAllSummaries();
+  saveStoredRefinementPrompts([]); // Also clear refinement prompts
 };

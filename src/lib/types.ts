@@ -14,8 +14,8 @@ export interface ThemeSuggestion {
   userInputTopic: string;
   title: string;
   description: string;
-  keywords?: string[]; // Keywords generated during initial theme suggestion
-  suggestedKeywords?: string[]; // AI-generated keywords/long-tail search terms for "general" platform
+  keywords?: string[]; 
+  suggestedKeywords?: string[]; 
   generatedAt: string;
   manualReferences?: ManualReferenceItem[];
 }
@@ -26,9 +26,9 @@ export interface ContentItem {
   topic: string;
   platform: Platform;
   content: string;
-  imagePrompts: string[]; // Parsed prompts from AI, especially if multiple for WordPress
+  imagePrompts: string[]; 
   wordCount?: number;
-  numberOfImagesRequested?: number; // Replaces imagePromptFrequency
+  numberOfImagesRequested?: number; 
   hashtags?: string[];
   status: ContentStatus;
   createdAt: string;
@@ -49,5 +49,12 @@ export interface SummarizationItem {
   inputText: string;
   summaryOutput: string;
   language: string;
+  createdAt: string; // ISO date string
+}
+
+export interface SavedRefinementPrompt {
+  id: string;
+  name: string;
+  promptText: string;
   createdAt: string; // ISO date string
 }

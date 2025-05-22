@@ -5,7 +5,7 @@ export const APP_NAME = "ContentForge AI";
 
 export const PLATFORMS: Platform[] = ["Wordpress", "Instagram", "Facebook"];
 
-export const DEFAULT_NUMBER_OF_IMAGES = 1; // New constant
+export const DEFAULT_NUMBER_OF_IMAGES = 1; 
 
 export const NAV_LINKS = [
   { href: "/", label: "Dashboard", iconName: "LayoutDashboard" },
@@ -36,10 +36,11 @@ export const LANGUAGE_OPTIONS: { value: string, label: string }[] = [
   // Add more languages as needed
 ];
 
-export const DEFAULT_OUTPUT_LANGUAGE = 'pt'; // Changed to Portuguese
+export const DEFAULT_OUTPUT_LANGUAGE = 'pt';
 
 // Storage Keys
 export const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';
 export const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
 export const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';
 export const SUMMARIES_STORAGE_KEY = 'contentForgeAi_summaries';
+export const REFINEMENT_PROMPTS_STORAGE_KEY = 'contentForgeAi_refinementPrompts';

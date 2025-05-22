@@ -6,13 +6,13 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings, ManualReferenceItem } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY } from '@/lib/constants';
+import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt } from '@/lib/types';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
+import { Label as UiLabel } from '@/components/ui/label'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -20,10 +20,31 @@ import { HtmlEditor } from './HtmlEditor';
 import { useToast } from '@/hooks/use-toast';
 import { generateContentForPlatform } from '@/ai/flows/generate-content-for-platform';
 import { suggestHashtags as suggestHashtagsFlow } from '@/ai/flows/smart-hashtag-suggestions';
-import { generateImage as generateImageFlow } from '@/ai/flows/generate-image-flow'; // New import
-import { getStoredSettings, addContentItem, updateContentItem, getContentItemById } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot } from 'lucide-react'; // Renamed ImageIcon
+import { generateImage as generateImageFlow } from '@/ai/flows/generate-image-flow';
+import { 
+  getStoredSettings, 
+  addContentItem, 
+  updateContentItem, 
+  getContentItemById,
+  getSavedRefinementPrompts,
+  addSavedRefinementPrompt,
+  deleteSavedRefinementPromptById,
+  // saveStoredRefinementPrompts // Not directly used, but good to be aware it exists
+} from '@/lib/storageService';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+
 
 const formSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
@@ -67,6 +88,14 @@ export function ContentFormClient({
   const [generatingImageFor, setGeneratingImageFor] = useState<Record<number, boolean>>({});
   const [generatedImages, setGeneratedImages] = useState<Record<number, string | null>>({});
 
+  // State for refinement modal
+  const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
+  const [refinementPromptText, setRefinementPromptText] = useState('');
+  const [savedRefinementPrompts, setSavedRefinementPrompts] = useState<SavedRefinementPrompt[]>([]);
+  const [currentRefinementPromptName, setCurrentRefinementPromptName] = useState('');
+  const [isRefiningContent, setIsRefiningContent] = useState(false);
+
+
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -80,10 +109,18 @@ export function ContentFormClient({
 
   const platformFieldValue = form.watch('platform');
 
+  const refreshSavedRefinementPrompts = useCallback(() => {
+    setSavedRefinementPrompts(getSavedRefinementPrompts());
+  }, []);
+
   useEffect(() => {
-    const handleStorageChange = () => setCurrentSettings(getStoredSettings());
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === SETTINGS_STORAGE_KEY) setCurrentSettings(getStoredSettings());
+      if (event.key === REFINEMENT_PROMPTS_STORAGE_KEY) refreshSavedRefinementPrompts();
+    };
     window.addEventListener('storage', handleStorageChange);
     setCurrentSettings(getStoredSettings());
+    refreshSavedRefinementPrompts();
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -114,40 +151,53 @@ export function ContentFormClient({
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts]);
 
 
-  const handleGenerateContent = async () => {
-    const { platform, topic, wordCount, numberOfImages } = form.getValues();
-    if (!topic) {
+  const handleGenerateOrRefineContent = async (isRefinement: boolean = false, refinementInstructionsFromModal?: string) => {
+    const { platform, topic, wordCount, numberOfImages, title } = form.getValues();
+    
+    if (!isRefinement && !topic) { 
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
+    if (isRefinement && !generatedContent) {
+        toast({ title: "Original Content Missing", description: "Cannot refine without existing generated content.", variant: "destructive" });
+        return;
+    }
+    if (isRefinement && !refinementInstructionsFromModal?.trim()) {
+        toast({ title: "Refinement Instructions Required", description: "Please enter instructions for refinement.", variant: "destructive" });
+        return;
+    }
     
-    setIsLoadingAi(true);
-    setGeneratedImages({}); // Clear previously generated images
+    if(isRefinement) setIsRefiningContent(true); else setIsLoadingAi(true);
+    setGeneratedImages({}); 
     try {
       const result = await generateContentForPlatform({
         platform: platform as Platform,
-        topic,
+        topic, 
+        title, 
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
-        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined, // Pass undefined for non-WP
+        numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined,
         outputLanguage: currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
+        originalContent: isRefinement ? generatedContent : undefined,
+        refinementInstructions: isRefinement ? refinementInstructionsFromModal : undefined,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
       setImagePrompts(prompts);
 
-      if (!form.getValues('title')) {
+      if (!form.getValues('title') && !isRefinement) {
         form.setValue('title', `${platform} post about ${topic.substring(0,30)}...`);
       }
-      toast({ title: "Content Generated!", description: "AI has generated content and image prompts." });
+      toast({ title: isRefinement ? "Content Refined!" : "Content Generated!", description: "AI has processed your request." });
     } catch (error) {
-      console.error("AI content generation error:", error);
-      toast({ title: "AI Error", description: `Failed to generate content. Check console for details. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
+      console.error(`AI ${isRefinement ? "refinement" : "content generation"} error:`, error);
+      toast({ title: "AI Error", description: `Failed to ${isRefinement ? "refine" : "generate"} content. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
-    setIsLoadingAi(false);
+    if(isRefinement) setIsRefiningContent(false); else setIsLoadingAi(false);
+    if(isRefinement) setIsRefineModalOpen(false); // Close modal after refinement
   };
 
   const handleSuggestHashtags = async () => {
@@ -177,7 +227,7 @@ export function ContentFormClient({
       return;
     }
     setGeneratingImageFor(prev => ({ ...prev, [promptIndex]: true }));
-    setGeneratedImages(prev => ({ ...prev, [promptIndex]: null })); // Clear previous image for this prompt
+    setGeneratedImages(prev => ({ ...prev, [promptIndex]: null })); 
 
     try {
       const result = await generateImageFlow({ prompt: promptText });
@@ -185,8 +235,8 @@ export function ContentFormClient({
       toast({ title: "Image Generated!", description: "AI has generated an image for your prompt." });
     } catch (error) {
       console.error("AI image generation error:", error);
-      toast({ title: "AI Image Error", description: `Failed to generate image. Check console for details. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
-      setGeneratedImages(prev => ({ ...prev, [promptIndex]: 'error' })); // Indicate error
+      toast({ title: "AI Image Error", description: `Failed to generate image. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
+      setGeneratedImages(prev => ({ ...prev, [promptIndex]: 'error' })); 
     }
     setGeneratingImageFor(prev => ({ ...prev, [promptIndex]: false }));
   };
@@ -225,6 +275,33 @@ export function ContentFormClient({
 
     setIsSaving(false);
     router.push('/');
+  };
+
+  const handleSaveRefinementPrompt = () => {
+    if (!currentRefinementPromptName.trim()) {
+      toast({ title: "Name Required", description: "Please provide a name for the refinement prompt.", variant: "destructive" });
+      return;
+    }
+    if (!refinementPromptText.trim()) {
+      toast({ title: "Prompt Required", description: "Please enter the refinement instructions to save.", variant: "destructive" });
+      return;
+    }
+    const newPrompt: SavedRefinementPrompt = {
+      id: Date.now().toString(),
+      name: currentRefinementPromptName,
+      promptText: refinementPromptText,
+      createdAt: new Date().toISOString(),
+    };
+    addSavedRefinementPrompt(newPrompt);
+    // refreshSavedRefinementPrompts(); // No longer needed here due to storage event listener
+    setCurrentRefinementPromptName('');
+    toast({ title: "Refinement Prompt Saved!", description: `Prompt "${newPrompt.name}" has been saved.` });
+  };
+
+  const handleDeleteRefinementPrompt = (id: string) => {
+    deleteSavedRefinementPromptById(id);
+    // refreshSavedRefinementPrompts(); // No longer needed here
+    toast({ title: "Refinement Prompt Deleted", description: "The saved prompt has been removed." });
   };
   
   const hasManualReferences = manualReferencesForDisplay.length > 0;
@@ -356,8 +433,8 @@ export function ContentFormClient({
             />
             
             {hasManualReferences && (
-              <Accordion type="single" collapsible className="w-full" defaultValue="manual-reference-materials-accordion-initial">
-                <AccordionItem value="manual-reference-materials-accordion-initial">
+              <Accordion type="single" collapsible className="w-full" defaultValue="manual-reference-materials-accordion">
+                <AccordionItem value="manual-reference-materials-accordion">
                   <AccordionTrigger>
                     <div className="flex items-center">
                       <BookOpen className="mr-2 h-5 w-5 text-primary" />
@@ -383,7 +460,7 @@ export function ContentFormClient({
             )}
 
 
-            <Button type="button" onClick={handleGenerateContent} disabled={isLoadingAi} className="w-full md:w-auto">
+            <Button type="button" onClick={() => handleGenerateOrRefineContent(false)} disabled={isLoadingAi || isRefiningContent} className="w-full md:w-auto">
               {isLoadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate Content with AI
             </Button>
@@ -409,6 +486,110 @@ export function ContentFormClient({
                 />
               )}
             </CardContent>
+            <CardFooter className="flex justify-start"> {/* Changed from justify-end */}
+                 <Dialog open={isRefineModalOpen} onOpenChange={setIsRefineModalOpen}>
+                    <DialogTrigger asChild>
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            disabled={!generatedContent || isLoadingAi || isRefiningContent}
+                            onClick={() => { setIsRefineModalOpen(true); setRefinementPromptText(''); setCurrentRefinementPromptName('');}} // Reset on open
+                        >
+                            <Wand2 className="mr-2 h-4 w-4" />
+                            Refine Content with AI
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[600px] md:max-w-[700px] lg:max-w-[800px]">
+                        <DialogHeader>
+                        <DialogTitle>Refine Generated Content</DialogTitle>
+                        <DialogDescription>
+                            Provide instructions to refine the current content. You can also save and reuse refinement prompts.
+                        </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+                            <div className="grid gap-2">
+                                <UiLabel htmlFor="refinement-prompt-text">Refinement Instructions</UiLabel>
+                                <Textarea
+                                id="refinement-prompt-text"
+                                placeholder="e.g., Make the tone more formal, Add a section about X, Shorten the introduction..."
+                                value={refinementPromptText}
+                                onChange={(e) => setRefinementPromptText(e.target.value)}
+                                rows={5}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <UiLabel htmlFor="load-saved-prompt">Load Saved Prompt</UiLabel>
+                                <Select
+                                onValueChange={(value) => {
+                                    const selected = savedRefinementPrompts.find(p => p.id === value);
+                                    if (selected) {
+                                      setRefinementPromptText(selected.promptText);
+                                      // Optionally set name if user wants to resave with same name
+                                      // setCurrentRefinementPromptName(selected.name); 
+                                    }
+                                }}
+                                >
+                                <SelectTrigger id="load-saved-prompt">
+                                    <SelectValue placeholder="Select a saved prompt..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {savedRefinementPrompts.length === 0 && <SelectItem value="-" disabled>No saved prompts</SelectItem>}
+                                    {savedRefinementPrompts.map(p => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="border-t pt-4 mt-2 space-y-3">
+                                <h4 className="text-sm font-medium">Save Current Instructions</h4>
+                                <div className="grid md:grid-cols-3 items-center gap-2 md:gap-4">
+                                  <UiLabel htmlFor="new-prompt-name" className="md:col-span-1">Prompt Name</UiLabel>
+                                  <Input
+                                      id="new-prompt-name"
+                                      className="md:col-span-2 h-9"
+                                      value={currentRefinementPromptName}
+                                      onChange={(e) => setCurrentRefinementPromptName(e.target.value)}
+                                      placeholder="e.g., Formal Tone Adjuster"
+                                  />
+                                </div>
+                                <Button type="button" size="sm" variant="outline" onClick={handleSaveRefinementPrompt} disabled={!currentRefinementPromptName.trim() || !refinementPromptText.trim()}>
+                                    <Save className="mr-2 h-3 w-3" /> Save Instructions
+                                </Button>
+                            </div>
+                            {savedRefinementPrompts.length > 0 && (
+                                <div className="border-t pt-4 mt-2 space-y-2">
+                                    <h4 className="text-sm font-medium">Manage Saved Prompts</h4>
+                                    <ScrollArea className="h-[150px] rounded-md border p-2">
+                                        <ul className="space-y-1">
+                                            {savedRefinementPrompts.map(p => (
+                                            <li key={p.id} className="flex justify-between items-center p-1 text-xs hover:bg-muted rounded">
+                                                <span className="truncate flex-1 mr-2" title={p.name}>{p.name}</span>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleDeleteRefinementPrompt(p.id)}>
+                                                    <Trash2 className="h-3 w-3 text-destructive"/>
+                                                </Button>
+                                            </li>
+                                            ))}
+                                        </ul>
+                                    </ScrollArea>
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter>
+                        <DialogClose asChild>
+                            <Button type="button" variant="outline">Cancel</Button>
+                        </DialogClose>
+                        <Button 
+                            type="button" 
+                            onClick={() => handleGenerateOrRefineContent(true, refinementPromptText)} 
+                            disabled={isRefiningContent || isLoadingAi || !refinementPromptText.trim()}
+                        >
+                            {isRefiningContent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                            Apply Refinement
+                        </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </CardFooter>
           </Card>
         )}
 
@@ -421,7 +602,7 @@ export function ContentFormClient({
             <CardContent className="space-y-4">
               {imagePrompts.map((prompt, index) => (
                 <div key={index} className="space-y-2 p-3 border rounded-md shadow-sm">
-                  <Label htmlFor={`image-prompt-${index}`}>Prompt {index + 1}</Label>
+                  <UiLabel htmlFor={`image-prompt-${index}`}>Prompt {index + 1}</UiLabel>
                   <Textarea
                     id={`image-prompt-${index}`}
                     value={prompt}
