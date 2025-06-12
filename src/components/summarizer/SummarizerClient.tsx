@@ -21,10 +21,10 @@ import {
   clearAllSummaries,
   getStoredThemeSuggestions,
   addManualReferenceToTheme,
-  getStoredSettings // Added missing import
+  getStoredSettings
 } from '@/lib/storageService';
 import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings } from '@/lib/types';
-import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle } from 'lucide-react'; // Renamed SettingsIcon to avoid conflict
+import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle, Eye } from 'lucide-react';
 import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/constants';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
@@ -69,6 +69,9 @@ export function SummarizerClient() {
   const [selectedThemeIdForSummary, setSelectedThemeIdForSummary] = useState<string | null>(null);
   const [currentSummaryToSend, setCurrentSummaryToSend] = useState<SummarizationItem | null>(null);
 
+  const [isViewContentModalOpen, setIsViewContentModalOpen] = useState(false);
+  const [summaryToView, setSummaryToView] = useState<SummarizationItem | null>(null);
+
   const form = useForm<SummarizerFormData>({
     resolver: zodResolver(summarizerFormSchema),
     defaultValues: {
@@ -92,14 +95,14 @@ export function SummarizerClient() {
   useEffect(() => {
     refreshSummaries();
     const currentLanguage = getCurrentSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
-    // form.reset({ inputText: '', outputLanguage: currentLanguage }); // Keep this reset for later if needed
+    // form.reset({ inputText: '', outputLanguage: currentLanguage }); 
 
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SUMMARIES_STORAGE_KEY) {
         refreshSummaries();
       }
-      if (event.key === SETTINGS_STORAGE_KEY) { // Ensure this key matches your actual settings key
+      if (event.key === SETTINGS_STORAGE_KEY) { 
          const newSettings = getCurrentSettings();
          form.setValue('outputLanguage', newSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
       }
@@ -138,7 +141,7 @@ export function SummarizerClient() {
         inputText,
         summaryOutput,
         language: outputLanguage,
-        createdAt: savedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(), // Keep original createdAt
+        createdAt: savedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(), 
       };
       updateSummarizationItem(updatedItem);
       toast({ title: "Summary Updated!", description: "Your summary has been updated." });
@@ -232,6 +235,11 @@ export function SummarizerClient() {
     toast({title: "Sent to Theme!", description: `Summary sent as a note to theme "${theme.title}".`});
     setIsSendToThemeModalOpen(false);
     setCurrentSummaryToSend(null);
+  };
+
+  const handleOpenViewContentModal = (summary: SummarizationItem) => {
+    setSummaryToView(summary);
+    setIsViewContentModalOpen(true);
   };
 
 
@@ -387,6 +395,9 @@ export function SummarizerClient() {
                   </ScrollArea>
                 </div>
                 <div className="flex flex-wrap gap-2 justify-end">
+                  <Button variant="outline" size="sm" onClick={() => handleOpenViewContentModal(item)}>
+                    <Eye className="mr-1 h-3 w-3" /> Ver
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleEditSummary(item)}>
                     <Edit3 className="mr-1 h-3 w-3" /> Edit
                   </Button>
@@ -462,6 +473,43 @@ export function SummarizerClient() {
         </DialogContent>
       </Dialog>
 
+      {/* View Full Content Modal */}
+      <Dialog open={isViewContentModalOpen} onOpenChange={setIsViewContentModalOpen}>
+        <DialogContent className="sm:max-w-[600px] md:max-w-[750px] lg:max-w-[900px] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>View Full Content</DialogTitle>
+            {summaryToView && (
+                <DialogDescription>
+                    Viewing original text and summary for item saved on {new Date(summaryToView.createdAt).toLocaleDateString()} in {LANGUAGE_OPTIONS.find(l=>l.value === summaryToView.language)?.label || summaryToView.language}.
+                </DialogDescription>
+            )}
+          </DialogHeader>
+          {summaryToView && (
+            <div className="grid grid-rows-2 gap-4 flex-1 overflow-y-hidden py-2">
+              <div className="flex flex-col overflow-y-hidden">
+                <Label className="mb-1 font-semibold">Original Text</Label>
+                <ScrollArea className="flex-1 rounded-md border p-3 bg-muted/20">
+                  <pre className="whitespace-pre-wrap text-sm">{summaryToView.inputText}</pre>
+                </ScrollArea>
+              </div>
+              <div className="flex flex-col overflow-y-hidden">
+                <Label className="mb-1 font-semibold">Generated Summary</Label>
+                <ScrollArea className="flex-1 rounded-md border p-3 bg-muted/20">
+                  <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{summaryToView.summaryOutput}</ReactMarkdown>
+                </ScrollArea>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
+
+    
