@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -44,19 +45,47 @@ const FormField = <
 const useFormField = () => {
   const fieldContext = React.useContext(FormFieldContext)
   const itemContext = React.useContext(FormItemContext)
-  const { getFieldState, formState } = useFormContext()
-
-  const fieldState = getFieldState(fieldContext.name, formState)
+  const methods = useFormContext()
 
   if (!fieldContext) {
     throw new Error("useFormField should be used within <FormField>")
   }
+  if (!itemContext) {
+    throw new Error("useFormField should be used within <FormItem>")
+  }
 
   const { id } = itemContext
+  const { name } = fieldContext
+
+  if (!methods) {
+    console.error(
+      `Form context not available for field "${name}". Ensure this component (e.g., FormLabel, FormControl) is rendered within a <Form {...formMethods}> provider component.`
+    );
+    // Return a default state to prevent crashing, though functionality will be limited.
+    return {
+      id,
+      name,
+      formItemId: `${id}-form-item`,
+      formDescriptionId: `${id}-form-item-description`,
+      formMessageId: `${id}-form-item-message`,
+      error: undefined,
+      invalid: false,
+      isDirty: false,
+      isTouched: false,
+      isValidating: false,
+      // value: undefined, // Omitted to avoid type issues if not properly typed for all possible fields
+      // onChange: () => {}, // Omitted for same reason
+      // onBlur: () => {}, // Omitted
+      // ref: () => {}, // Omitted
+    }
+  }
+
+  const { getFieldState, formState } = methods
+  const fieldState = getFieldState(name, formState)
 
   return {
     id,
-    name: fieldContext.name,
+    name,
     formItemId: `${id}-form-item`,
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
