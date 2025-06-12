@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Save, Trash2, Users, BrainCircuit, AlertTriangle } from 'lucide-react';
 import {
@@ -25,7 +25,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
+  AlertDialogDescription as AlertDialogDesc, // Renamed to avoid conflict if we had a local one
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -252,9 +252,9 @@ export function TrainingClient() {
                            <AlertDialogTitle className="flex items-center">
                             <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/>Demitir Funcionário?
                           </AlertDialogTitle>
-                          <AlertDialogDescription>
+                          <AlertDialogDesc>
                             Esta ação removerá permanentemente o funcionário "{func.nome}" do departamento de {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label}. As instruções serão perdidas. Deseja continuar?
-                          </AlertDialogDescription>
+                          </AlertDialogDesc>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -280,3 +280,5 @@ export function TrainingClient() {
     </div>
   );
 }
+
+    
