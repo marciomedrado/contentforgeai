@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Clone as CloneIcon } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,8 +83,7 @@ export function TrainingClient() {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === FUNCIONARIOS_STORAGE_KEY) {
         refreshAllFuncionarios();
-        // Also refresh active if a funcionario was deleted/changed and might have been active
-        refreshActiveFuncionarios(); 
+        refreshActiveFuncionarios();
       }
       if (event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
         refreshActiveFuncionarios();
@@ -101,7 +100,7 @@ export function TrainingClient() {
       instrucoes: data.instrucoes,
       departamento: data.departamento as Departamento,
       createdAt: editingFuncionario?.createdAt || new Date().toISOString(),
-      status: editingFuncionario?.status || 'Active', // Preserve status if editing, else default to Active
+      status: editingFuncionario?.status || 'Active',
     };
 
     saveFuncionario(newFuncionario);
@@ -121,6 +120,20 @@ export function TrainingClient() {
       departamento: funcionario.departamento,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCloneFuncionario = (funcionario: Funcionario) => {
+    setEditingFuncionario(null); // Ensure we are creating a new one
+    form.reset({
+      nome: `${funcionario.nome} (Cópia)`,
+      instrucoes: funcionario.instrucoes,
+      departamento: undefined, // Force user to select a department for the clone
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast({
+      title: "Funcionário Pronto para Clonar",
+      description: `Edite os detalhes de "${funcionario.nome} (Cópia)" e salve. Não se esqueça de atribuir um departamento.`,
+    });
   };
 
   const handleDelete = (id: string, nome: string) => {
@@ -163,7 +176,6 @@ export function TrainingClient() {
     [allFuncionarios]
   );
 
-
   return (
     <div className="space-y-8">
       <Card>
@@ -203,7 +215,7 @@ export function TrainingClient() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                       disabled={!!editingFuncionario}
+                       disabled={!!editingFuncionario && editingFuncionario.departamento === field.value} // Allow changing if cloning (editingFuncionario is null) or if field hasn't been set yet
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -218,7 +230,8 @@ export function TrainingClient() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar um funcionário existente.</FormDescription>}
+                    {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar um funcionário existente, a menos que esteja clonando.</FormDescription>}
+                    {!editingFuncionario && <FormDescription>Se um departamento já tiver um funcionário, ele será substituído.</FormDescription>}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -300,7 +313,6 @@ export function TrainingClient() {
         </CardContent>
       </Card>
 
-
       {activeAndEditableFuncionarios.length > 0 && (
         <Card>
           <CardHeader>
@@ -308,7 +320,7 @@ export function TrainingClient() {
               <Users className="mr-2 h-6 w-6 text-primary" />
               Quadro de Funcionários Ativos
             </CardTitle>
-            <CardDescription>Gerencie os funcionários atualmente ativos. Você pode editá-los, colocá-los de férias ou demiti-los.</CardDescription>
+            <CardDescription>Gerencie os funcionários atualmente ativos. Você pode editá-los, cloná-los, colocá-los de férias ou demiti-los.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {activeAndEditableFuncionarios.map((func) => (
@@ -324,9 +336,12 @@ export function TrainingClient() {
                         {func.status === 'Vacation' ? 'De Férias' : 'Ativo'}
                     </Badge>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
+                  <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center flex-wrap">
                      <Button variant="outline" size="sm" onClick={() => handleEditFuncionario(func)}>
                         <Edit3 className="mr-1 h-4 w-4"/> Editar
+                      </Button>
+                       <Button variant="outline" size="sm" onClick={() => handleCloneFuncionario(func)}>
+                        <CloneIcon className="mr-1 h-4 w-4"/> Clonar
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => handleChangeFuncionarioStatus(func.id, 'Vacation')}>
                         <Coffee className="mr-1 h-4 w-4"/> Colocar em Férias
@@ -376,7 +391,7 @@ export function TrainingClient() {
               <Briefcase className="mr-2 h-6 w-6 text-muted-foreground" />
               Funcionários em Férias (Arquivados)
             </CardTitle>
-            <CardDescription>Funcionários que estão de férias. Você pode reativá-los ou demiti-los.</CardDescription>
+            <CardDescription>Funcionários que estão de férias. Você pode reativá-los, cloná-los ou demiti-los.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {vacationingFuncionarios.map((func) => (
@@ -392,9 +407,12 @@ export function TrainingClient() {
                         De Férias
                     </Badge>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
+                  <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => handleChangeFuncionarioStatus(func.id, 'Active')}>
                         <PlayCircle className="mr-1 h-4 w-4"/> Reativar
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleCloneFuncionario(func)}>
+                        <CloneIcon className="mr-1 h-4 w-4"/> Clonar
                       </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -441,7 +459,8 @@ export function TrainingClient() {
             </CardContent>
          </Card>
       )}
-
     </div>
   );
 }
+
+    
