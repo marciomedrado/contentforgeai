@@ -6,11 +6,13 @@ import { useForm, SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Funcionario, Departamento } from '@/lib/types';
-import { DEPARTAMENTOS, FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import { DEPARTAMENTOS, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import {
   getFuncionarios,
   saveFuncionario,
   deleteFuncionarioById,
+  setActiveFuncionarioForDepartamento,
+  getActiveFuncionarioIdForDepartamento,
 } from '@/lib/storageService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,18 +21,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription as AlertDialogDesc, // Renamed to avoid conflict if we had a local one
+  AlertDialogDescription as AlertDialogDesc,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Separator } from '@/components/ui/separator';
 
 const funcionarioFormSchema = z.object({
   nome: z.string().min(3, "O nome do funcionário deve ter pelo menos 3 caracteres."),
@@ -44,8 +47,9 @@ type FuncionarioFormData = z.infer<typeof funcionarioFormSchema>;
 
 export function TrainingClient() {
   const { toast } = useToast();
-  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [allFuncionarios, setAllFuncionarios] = useState<Funcionario[]>([]);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
+  const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<Departamento, string | null>>({});
 
   const form = useForm<FuncionarioFormData>({
     resolver: zodResolver(funcionarioFormSchema),
@@ -56,20 +60,33 @@ export function TrainingClient() {
     },
   });
 
-  const refreshFuncionarios = useCallback(() => {
-    setFuncionarios(getFuncionarios());
+  const refreshAllFuncionarios = useCallback(() => {
+    setAllFuncionarios(getFuncionarios());
+  }, []);
+
+  const refreshActiveFuncionarios = useCallback(() => {
+    const activeIds: Record<Departamento, string | null> = {} as Record<Departamento, string | null>;
+    DEPARTAMENTOS.forEach(dep => {
+      activeIds[dep.value] = getActiveFuncionarioIdForDepartamento(dep.value);
+    });
+    setActiveFuncionarioIds(activeIds);
   }, []);
 
   useEffect(() => {
-    refreshFuncionarios();
+    refreshAllFuncionarios();
+    refreshActiveFuncionarios();
+
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === FUNCIONARIOS_STORAGE_KEY) {
-        refreshFuncionarios();
+        refreshAllFuncionarios();
+      }
+      if (event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
+        refreshActiveFuncionarios();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshFuncionarios]);
+  }, [refreshAllFuncionarios, refreshActiveFuncionarios]);
 
   const onSubmit: SubmitHandler<FuncionarioFormData> = (data) => {
     const newFuncionario: Funcionario = {
@@ -87,7 +104,7 @@ export function TrainingClient() {
     });
     form.reset({ nome: '', instrucoes: '', departamento: undefined });
     setEditingFuncionario(null);
-    refreshFuncionarios();
+    // No need to call refreshAllFuncionarios() here as saveFuncionario triggers storage event
   };
 
   const handleEditFuncionario = (funcionario: Funcionario) => {
@@ -101,7 +118,7 @@ export function TrainingClient() {
   };
 
   const handleDelete = (id: string, nome: string) => {
-    deleteFuncionarioById(id);
+    deleteFuncionarioById(id); // This will also trigger storage events to update lists
     toast({
       title: "Funcionário Demitido!",
       description: `O funcionário "${nome}" foi removido.`,
@@ -110,12 +127,17 @@ export function TrainingClient() {
         form.reset({ nome: '', instrucoes: '', departamento: undefined });
         setEditingFuncionario(null);
     }
-    refreshFuncionarios();
   };
 
-  const getFuncionarioForDepartamento = (dep: Departamento) => {
-    return funcionarios.find(f => f.departamento === dep);
-  }
+  const handleSetActiveFuncionario = (departamento: Departamento, funcionarioId: string) => {
+    const idToSet = funcionarioId === '' ? null : funcionarioId;
+    setActiveFuncionarioForDepartamento(departamento, idToSet);
+    // refreshActiveFuncionarios will be called by storage event
+    toast({
+      title: "Funcionário Ativo Atualizado!",
+      description: `Configuração para ${DEPARTAMENTOS.find(d => d.value === departamento)?.label} atualizada.`,
+    });
+  };
 
   return (
     <div className="space-y-8">
@@ -127,8 +149,8 @@ export function TrainingClient() {
           </CardTitle>
           <CardDescription>
             {editingFuncionario
-              ? `Modifique os detalhes do funcionário "${editingFuncionario.nome}". Salvar irá ATUALIZAR o funcionário deste departamento.`
-              : "Crie 'Funcionários' com instruções específicas para cada 'Departamento'. Cada departamento só pode ter um funcionário designado. Salvar um novo para um departamento existente o substituirá."}
+              ? `Modifique os detalhes do funcionário "${editingFuncionario.nome}".`
+              : "Crie 'Funcionários' com instruções específicas e atribua-os a 'Departamentos'. Você pode ter múltiplos funcionários por departamento."}
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -156,7 +178,7 @@ export function TrainingClient() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={!!editingFuncionario} // Disable if editing, department cannot be changed
+                       disabled={!!editingFuncionario} // Department cannot be changed when editing to maintain integrity
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -165,14 +187,13 @@ export function TrainingClient() {
                       </FormControl>
                       <SelectContent>
                         {DEPARTAMENTOS.map((dep) => (
-                          <SelectItem key={dep.value} value={dep.value} disabled={!editingFuncionario && !!getFuncionarioForDepartamento(dep.value)}>
-                            {dep.label} {!editingFuncionario && getFuncionarioForDepartamento(dep.value) ? ` (Ocupado por: ${getFuncionarioForDepartamento(dep.value)?.nome})` : ''}
+                          <SelectItem key={dep.value} value={dep.value}>
+                            {dep.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar.</FormDescription>}
-                    {!editingFuncionario && <FormDescription>Se um departamento já tiver um funcionário, ele será substituído.</FormDescription>}
+                    {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar um funcionário existente.</FormDescription>}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -191,7 +212,7 @@ export function TrainingClient() {
                       />
                     </FormControl>
                     <FormDescription>
-                      Estas instruções serão usadas pela IA ao gerar conteúdo para o departamento selecionado.
+                      Estas instruções serão usadas pela IA quando este funcionário estiver ativo para o departamento selecionado.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -216,17 +237,55 @@ export function TrainingClient() {
         </Form>
       </Card>
 
-      {funcionarios.length > 0 && (
+      <Card>
+        <CardHeader>
+            <CardTitle className="flex items-center">
+                <Settings2 className="mr-2 h-6 w-6 text-primary"/>
+                Gerenciar Funcionários Ativos por Departamento
+            </CardTitle>
+            <CardDescription>
+                Selecione qual funcionário (se houver) deve estar ativo para cada departamento. As instruções do funcionário ativo serão usadas.
+            </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+            {DEPARTAMENTOS.map(dep => {
+                const funcionariosNesteDepartamento = allFuncionarios.filter(f => f.departamento === dep.value);
+                return (
+                    <div key={dep.value} className="space-y-2 p-3 border rounded-md shadow-sm">
+                        <FormLabel className="font-semibold">{dep.label}</FormLabel>
+                        <Select
+                            value={activeFuncionarioIds[dep.value] || ""}
+                            onValueChange={(funcionarioId) => handleSetActiveFuncionario(dep.value, funcionarioId)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Nenhum (Padrão do Sistema)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">Nenhum (Padrão do Sistema)</SelectItem>
+                                {funcionariosNesteDepartamento.length === 0 && <SelectItem value="no-func" disabled>Nenhum funcionário criado para este departamento</SelectItem>}
+                                {funcionariosNesteDepartamento.map(func => (
+                                    <SelectItem key={func.id} value={func.id}>{func.nome}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                );
+            })}
+        </CardContent>
+      </Card>
+
+
+      {allFuncionarios.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <Users className="mr-2 h-6 w-6 text-primary" />
-              Quadro de Funcionários de IA
+              Quadro de Todos os Funcionários Criados
             </CardTitle>
-            <CardDescription>Gerencie os funcionários existentes.</CardDescription>
+            <CardDescription>Gerencie todos os funcionários existentes. Ative-os na seção acima.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {funcionarios.map((func) => (
+            {allFuncionarios.map((func) => (
               <Card key={func.id} className="p-4 shadow-sm">
                 <div className="flex justify-between items-start">
                   <div>
@@ -238,7 +297,7 @@ export function TrainingClient() {
                   </div>
                   <div className="flex gap-2">
                      <Button variant="outline" size="sm" onClick={() => handleEditFuncionario(func)}>
-                        Editar
+                        <Edit3 className="mr-1 h-4 w-4"/> Editar
                       </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -253,7 +312,7 @@ export function TrainingClient() {
                             <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/>Demitir Funcionário?
                           </AlertDialogTitle>
                           <AlertDialogDesc>
-                            Esta ação removerá permanentemente o funcionário "{func.nome}" do departamento de {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label}. As instruções serão perdidas. Deseja continuar?
+                            Esta ação removerá permanentemente o funcionário "{func.nome}" do departamento de {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label}. As instruções serão perdidas. Se este funcionário estiver ativo para algum departamento, ele será desativado. Deseja continuar?
                           </AlertDialogDesc>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -266,9 +325,9 @@ export function TrainingClient() {
                     </AlertDialog>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-3 pt-2 border-t">
                   <p className="text-xs font-semibold mb-1">Instruções:</p>
-                  <p className="text-sm bg-muted/50 p-2 rounded-md whitespace-pre-wrap max-h-28 overflow-y-auto">
+                  <p className="text-sm bg-muted/30 p-2 rounded-md whitespace-pre-wrap max-h-28 overflow-y-auto">
                     {func.instrucoes}
                   </p>
                 </div>
@@ -280,5 +339,3 @@ export function TrainingClient() {
     </div>
   );
 }
-
-    

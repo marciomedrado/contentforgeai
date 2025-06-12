@@ -24,10 +24,10 @@ import {
   deleteManualReferenceFromTheme,
   updateThemeWithSuggestedKeywords,
   deleteKeywordFromTheme,
-  getFuncionarioByDepartamento, // Import new function
+  getActiveFuncionarioForDepartamento, // Updated
 } from '@/lib/storageService';
 import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info } from 'lucide-react';
-import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label as UiLabel } from "@/components/ui/label";
@@ -102,25 +102,28 @@ export function ThemePlannerClient() {
     setStoredThemeSuggestions(getStoredThemeSuggestions());
   }, []);
 
-  const refreshSettingsAndFuncionarios = useCallback(() => {
+  const refreshSettingsAndActiveFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
-    setThemePlannerFuncionario(getFuncionarioByDepartamento("ThemePlanner") || null);
-    setSmartHashtagFuncionario(getFuncionarioByDepartamento("SmartHashtagSuggestions") || null);
+    setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null);
+    setSmartHashtagFuncionario(getActiveFuncionarioForDepartamento("SmartHashtagSuggestions") || null);
   }, []);
 
   useEffect(() => {
-    refreshSettingsAndFuncionarios();
+    refreshSettingsAndActiveFuncionarios();
     refreshStoredThemes();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === THEMES_STORAGE_KEY) refreshStoredThemes();
-      if (event.key === SETTINGS_STORAGE_KEY || event.key === FUNCIONARIOS_STORAGE_KEY) {
-        refreshSettingsAndFuncionarios();
+      if (event.key === SETTINGS_STORAGE_KEY || 
+          event.key === FUNCIONARIOS_STORAGE_KEY ||
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY
+          ) {
+        refreshSettingsAndActiveFuncionarios();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshStoredThemes, refreshSettingsAndFuncionarios]);
+  }, [refreshStoredThemes, refreshSettingsAndActiveFuncionarios]);
 
   const form = useForm<ThemePlannerFormData>({
     resolver: zodResolver(themePlannerSchema),
@@ -128,12 +131,12 @@ export function ThemePlannerClient() {
   });
 
   const onThemeSuggestSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
-    const freshSettings = getStoredSettings();
+    const freshSettings = getStoredSettings(); // Re-fetch settings to ensure latest API key info
     if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) {
       toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or ensure it's in your .env file.", variant: "destructive" });
       return;
     }
-    setCurrentSettings(freshSettings);
+    setCurrentSettings(freshSettings); // Update local state if needed, though active funcionario is main concern
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
     try {
@@ -273,12 +276,19 @@ export function ThemePlannerClient() {
         <CardHeader>
           <CardTitle>Proactive Theme Planner</CardTitle>
           <CardDescription>Let AI help you brainstorm content themes. Enter a general topic and get suggestions for titles, descriptions, and keywords.</CardDescription>
-           {themePlannerFuncionario && (
+           {themePlannerFuncionario ? (
             <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
               <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
-                Usando instruções do funcionário: <span className="font-semibold">{themePlannerFuncionario.nome}</span> para o Planejador de Temas.
+                Usando instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> para o Planejador de Temas.
               </AlertDescription>
+            </Alert>
+          ) : (
+            <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
+                <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
+                  Nenhum funcionário ativo para o Planejador de Temas. Usando prompt padrão.
+                </AlertDescription>
             </Alert>
           )}
         </CardHeader>
@@ -365,12 +375,19 @@ export function ThemePlannerClient() {
           <CardHeader>
             <CardTitle>Saved Theme Ideas</CardTitle>
             <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content.</CardDescription>
-              {smartHashtagFuncionario && (
+              {smartHashtagFuncionario ? (
                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
                   <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                   <AlertDescription className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de termos/palavras-chave usarão instruções de: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
+                    Sugestões de termos/palavras-chave usarão instruções do funcionário ativo: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
                   </AlertDescription>
+                </Alert>
+                ) : (
+                 <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600 text-xs">
+                    <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                    <AlertDescription className="text-gray-700 dark:text-gray-300">
+                        Nenhum funcionário ativo para Sugestões de Hashtag/Palavra-chave. Usando prompt padrão.
+                    </AlertDescription>
                 </Alert>
               )}
           </CardHeader>

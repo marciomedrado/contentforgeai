@@ -7,7 +7,7 @@ import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt, Funcionario } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,7 +29,7 @@ import {
   getSavedRefinementPrompts,
   addSavedRefinementPrompt,
   deleteSavedRefinementPromptById,
-  getFuncionarioByDepartamento, // Import new function
+  getActiveFuncionarioForDepartamento, // Updated
 } from '@/lib/storageService';
 import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -118,13 +118,15 @@ export function ContentFormClient({
 
   const refreshSettingsAndFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
-    setContentCreationFuncionario(getFuncionarioByDepartamento("ContentCreation") || null);
-    setSmartHashtagFuncionario(getFuncionarioByDepartamento("SmartHashtagSuggestions") || null);
+    setContentCreationFuncionario(getActiveFuncionarioForDepartamento("ContentCreation") || null);
+    setSmartHashtagFuncionario(getActiveFuncionarioForDepartamento("SmartHashtagSuggestions") || null);
   }, []);
 
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === SETTINGS_STORAGE_KEY || event.key === FUNCIONARIOS_STORAGE_KEY) {
+      if (event.key === SETTINGS_STORAGE_KEY || 
+          event.key === FUNCIONARIOS_STORAGE_KEY || 
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
         refreshSettingsAndFuncionarios();
       }
       if (event.key === REFINEMENT_PROMPTS_STORAGE_KEY) refreshSavedRefinementPrompts();
@@ -340,14 +342,21 @@ export function ContentFormClient({
           <CardHeader>
             <CardTitle>{contentId ? 'Edit Content' : 'Create New Content'}</CardTitle>
             <CardDescription>Fill in the details below and let AI assist you in crafting perfect posts.</CardDescription>
-            {contentCreationFuncionario && (
+            {contentCreationFuncionario ? (
                 <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
                   <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
-                    Usando instruções do funcionário: <span className="font-semibold">{contentCreationFuncionario.nome}</span> para Criação de Conteúdo.
+                    Usando instruções do funcionário ativo: <span className="font-semibold">{contentCreationFuncionario.nome}</span> para Criação de Conteúdo.
                   </AlertDescription>
                 </Alert>
-              )}
+              ) : (
+                <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
+                 <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                  <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
+                    Nenhum funcionário ativo para Criação de Conteúdo. Usando prompt padrão.
+                  </AlertDescription>
+                </Alert>
+            )}
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -726,14 +735,21 @@ export function ContentFormClient({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><Tags className="mr-2 h-5 w-5" /> Hashtags</CardTitle>
-              {smartHashtagFuncionario && (
+              {smartHashtagFuncionario ? (
                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
                   <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                   <AlertDescription className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de Hashtag usarão instruções de: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
+                    Sugestões de Hashtag usarão instruções do funcionário ativo: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
                   </AlertDescription>
                 </Alert>
-              )}
+                 ) : (
+                <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600 text-xs">
+                  <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                  <AlertDescription className="text-gray-700 dark:text-gray-300">
+                     Nenhum funcionário ativo para Sugestões de Hashtag. Usando prompt padrão.
+                  </AlertDescription>
+                </Alert>
+            )}
             </CardHeader>
             <CardContent className="space-y-4">
               <Button type="button" variant="outline" onClick={handleSuggestHashtags} disabled={isSuggestingHashtags || !generatedContent} className="w-full md:w-auto">

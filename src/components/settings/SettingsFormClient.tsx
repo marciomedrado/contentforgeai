@@ -6,7 +6,7 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { AppSettings } from '@/lib/types';
-import { getStoredSettings, saveStoredSettings, clearAllContentItems, clearAllThemeSuggestions, clearAllSummaries, clearAllData } from '@/lib/storageService'; // Updated clearAllData import
+import { getStoredSettings, saveStoredSettings, clearAllContentItems, clearAllThemeSuggestions, clearAllSummaries, clearAllData } from '@/lib/storageService';
 import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -81,8 +81,8 @@ export function SettingsFormClient() {
   }
 
   const handleClearAllData = () => {
-    clearAllData(); // This now also clears funcionarios
-    toast({ title: "All Data Cleared", description: "All content items, theme suggestions, summaries, and training data (funcionários) have been removed." });
+    clearAllData(); // This now also clears funcionarios and active funcionarios
+    toast({ title: "All Data Cleared", description: "All content items, theme suggestions, summaries, and training data (funcionários & active status) have been removed." });
   };
 
 
@@ -250,7 +250,7 @@ export function SettingsFormClient() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete ALL your content items, theme suggestions, summaries, and training data (funcionários). App settings (like API keys) will NOT be cleared.
+                  This action cannot be undone. This will permanently delete ALL your content items, theme suggestions, summaries, and training data (funcionários and their active status). App settings (like API keys) will NOT be cleared.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -271,3 +271,4 @@ export function SettingsFormClient() {
     </div>
   );
 }
+

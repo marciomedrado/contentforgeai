@@ -7,11 +7,12 @@ import {
   THEMES_STORAGE_KEY,
   SUMMARIES_STORAGE_KEY,
   REFINEMENT_PROMPTS_STORAGE_KEY,
-  FUNCIONARIOS_STORAGE_KEY // New key
+  FUNCIONARIOS_STORAGE_KEY,
+  ACTIVE_FUNCIONARIOS_STORAGE_KEY,
 } from './constants';
 
 // Helper to safely interact with localStorage
-const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
+const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
   try {
     const item = window.localStorage.getItem(key);
@@ -22,7 +23,7 @@ const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
-const safeLocalStorageSet = <T,>(key: string, value: T): void => {
+const safeLocalStorageSet = <T>(key: string, value: T): void => {
   if (typeof window === 'undefined') return;
   try {
     const oldValue = window.localStorage.getItem(key);
@@ -68,7 +69,7 @@ export const deleteContentItemById = (id: string): void => {
 };
 
 export const clearAllContentItems = (): void => {
-  safeLocalStorageSet<ContentItem[]>(CONTENT_STORAGE_KEY, []);
+  saveStoredContentItems([]);
 };
 
 
@@ -76,6 +77,7 @@ export const clearAllContentItems = (): void => {
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
     openAIKey: '',
+    openAIAgentId: '', // Added openAIAgentId
     outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     perplexityApiKey: '',
   };
@@ -110,7 +112,7 @@ export const deleteThemeSuggestionById = (id: string): void => {
 };
 
 export const clearAllThemeSuggestions = (): void => {
-  safeLocalStorageSet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, []);
+  saveStoredThemeSuggestions([]);
 };
 
 export const addManualReferenceToTheme = (themeId: string, reference: ManualReferenceItem): void => {
@@ -180,7 +182,7 @@ export const deleteSummarizationItemById = (id: string): void => {
 };
 
 export const clearAllSummaries = (): void => {
-  safeLocalStorageSet<SummarizationItem[]>(SUMMARIES_STORAGE_KEY, []);
+  saveStoredSummaries([]);
 };
 
 // Saved Refinement Prompts
@@ -210,18 +212,18 @@ export const deleteSavedRefinementPromptById = (id: string): void => {
 };
 
 
-// Funcionarios (New)
+// Funcionarios
 export const getFuncionarios = (): Funcionario[] => {
   return safeLocalStorageGet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const saveFuncionario = (funcionario: Funcionario): void => {
   let funcionarios = getFuncionarios();
-  const existingIndex = funcionarios.findIndex(f => f.departamento === funcionario.departamento);
+  const existingIndex = funcionarios.findIndex(f => f.id === funcionario.id);
 
   if (existingIndex > -1) {
-    // Update existing funcionario for the department
-    funcionarios[existingIndex] = { ...funcionario, id: funcionarios[existingIndex].id, createdAt: funcionarios[existingIndex].createdAt };
+    // Update existing funcionario
+    funcionarios[existingIndex] = funcionario;
   } else {
     // Add new funcionario
     funcionarios.unshift(funcionario);
@@ -229,19 +231,63 @@ export const saveFuncionario = (funcionario: Funcionario): void => {
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 };
 
-export const getFuncionarioByDepartamento = (departamento: Departamento): Funcionario | undefined => {
+export const getFuncionarioById = (id: string): Funcionario | undefined => {
   const funcionarios = getFuncionarios();
-  return funcionarios.find(f => f.departamento === departamento);
+  return funcionarios.find(f => f.id === id);
 };
 
 export const deleteFuncionarioById = (id: string): void => {
   const funcionarios = getFuncionarios();
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.filter(f => f.id !== id));
+  // Also deactivate if this funcionario was active for any department
+  const activeFuncionarios = getActiveFuncionariosMap();
+  let changed = false;
+  for (const dep in activeFuncionarios) {
+    if (activeFuncionarios[dep as Departamento] === id) {
+      delete activeFuncionarios[dep as Departamento]; // Use delete for object properties
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveActiveFuncionariosMap(activeFuncionarios);
+  }
 };
 
 export const clearAllFuncionarios = (): void => {
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []);
+  safeLocalStorageSet<Record<Departamento, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
+};
+
+// Active Funcionarios Management
+const getActiveFuncionariosMap = (): Record<Departamento, string | null> => {
+  return safeLocalStorageGet<Record<Departamento, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
+};
+
+const saveActiveFuncionariosMap = (map: Record<Departamento, string | null>): void => {
+  safeLocalStorageSet<Record<Departamento, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, map);
 }
+
+export const setActiveFuncionarioForDepartamento = (departamento: Departamento, funcionarioId: string | null): void => {
+  const activeMap = getActiveFuncionariosMap();
+  if (funcionarioId === null || funcionarioId === '') {
+    delete activeMap[departamento];
+  } else {
+    activeMap[departamento] = funcionarioId;
+  }
+  saveActiveFuncionariosMap(activeMap);
+};
+
+export const getActiveFuncionarioIdForDepartamento = (departamento: Departamento): string | null => {
+  const activeMap = getActiveFuncionariosMap();
+  return activeMap[departamento] || null;
+};
+
+export const getActiveFuncionarioForDepartamento = (departamento: Departamento): Funcionario | null => {
+  const activeId = getActiveFuncionarioIdForDepartamento(departamento);
+  if (!activeId) return null;
+  return getFuncionarioById(activeId) || null;
+};
+
 
 // General Data Clearing
 export const clearAllData = (): void => {
@@ -249,5 +295,5 @@ export const clearAllData = (): void => {
   clearAllThemeSuggestions();
   clearAllSummaries();
   saveStoredRefinementPrompts([]);
-  clearAllFuncionarios(); // Add this line
+  clearAllFuncionarios();
 };

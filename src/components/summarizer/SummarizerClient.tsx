@@ -22,11 +22,11 @@ import {
   getStoredThemeSuggestions,
   addManualReferenceToTheme,
   getStoredSettings,
-  getFuncionarioByDepartamento, // Import new function
+  getActiveFuncionarioForDepartamento, // Updated
 } from '@/lib/storageService';
 import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings, Funcionario } from '@/lib/types';
 import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle, Eye, Info } from 'lucide-react';
-import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -89,30 +89,32 @@ export function SummarizerClient() {
     setSavedSummaries(getStoredSummaries());
   }, []);
 
-  const refreshSettingsAndFuncionarios = useCallback(() => {
+  const refreshSettingsAndActiveFuncionario = useCallback(() => {
     if (typeof window !== 'undefined') {
       const currentSettings = getStoredSettings();
       form.setValue('outputLanguage', currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
-      setSummarizerFuncionario(getFuncionarioByDepartamento("Summarizer") || null);
+      setSummarizerFuncionario(getActiveFuncionarioForDepartamento("Summarizer") || null);
     }
   }, [form]);
 
 
   useEffect(() => {
     refreshSummaries();
-    refreshSettingsAndFuncionarios();
+    refreshSettingsAndActiveFuncionario();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SUMMARIES_STORAGE_KEY) {
         refreshSummaries();
       }
-      if (event.key === SETTINGS_STORAGE_KEY || event.key === FUNCIONARIOS_STORAGE_KEY) {
-         refreshSettingsAndFuncionarios();
+      if (event.key === SETTINGS_STORAGE_KEY || 
+          event.key === FUNCIONARIOS_STORAGE_KEY || 
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
+         refreshSettingsAndActiveFuncionario();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshSummaries, refreshSettingsAndFuncionarios]);
+  }, [refreshSummaries, refreshSettingsAndActiveFuncionario]);
 
   const onSummarizeSubmit: SubmitHandler<SummarizerFormData> = async (data) => {
     setIsLoading(true);
@@ -253,12 +255,19 @@ export function SummarizerClient() {
         <CardHeader>
           <CardTitle>Text Summarizer</CardTitle>
           <CardDescription>Input your text below and select the desired language for the summary. The AI will generate a concise overview.</CardDescription>
-          {summarizerFuncionario && (
+          {summarizerFuncionario ? (
             <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
               <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
-                Usando instruções do funcionário: <span className="font-semibold">{summarizerFuncionario.nome}</span> para o Sumarizador.
+                Usando instruções do funcionário ativo: <span className="font-semibold">{summarizerFuncionario.nome}</span> para o Sumarizador.
               </AlertDescription>
+            </Alert>
+            ) : (
+             <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
+                <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
+                  Nenhum funcionário ativo para o Sumarizador. Usando prompt padrão.
+                </AlertDescription>
             </Alert>
           )}
         </CardHeader>
