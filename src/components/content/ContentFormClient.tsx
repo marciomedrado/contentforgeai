@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY } from '@/lib/constants';
+import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt, Funcionario } from '@/lib/types';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,8 +29,9 @@ import {
   getSavedRefinementPrompts,
   addSavedRefinementPrompt,
   deleteSavedRefinementPromptById,
+  getFuncionarioByDepartamento, // Import new function
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -43,6 +44,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 
 const formSchema = z.object({
@@ -93,6 +95,9 @@ export function ContentFormClient({
   const [currentRefinementPromptName, setCurrentRefinementPromptName] = useState('');
   const [isRefiningContent, setIsRefiningContent] = useState(false);
 
+  const [contentCreationFuncionario, setContentCreationFuncionario] = useState<Funcionario | null>(null);
+  const [smartHashtagFuncionario, setSmartHashtagFuncionario] = useState<Funcionario | null>(null);
+
 
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
@@ -111,13 +116,21 @@ export function ContentFormClient({
     setSavedRefinementPrompts(getSavedRefinementPrompts());
   }, []);
 
+  const refreshSettingsAndFuncionarios = useCallback(() => {
+    setCurrentSettings(getStoredSettings());
+    setContentCreationFuncionario(getFuncionarioByDepartamento("ContentCreation") || null);
+    setSmartHashtagFuncionario(getFuncionarioByDepartamento("SmartHashtagSuggestions") || null);
+  }, []);
+
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === SETTINGS_STORAGE_KEY) setCurrentSettings(getStoredSettings());
+      if (event.key === SETTINGS_STORAGE_KEY || event.key === FUNCIONARIOS_STORAGE_KEY) {
+        refreshSettingsAndFuncionarios();
+      }
       if (event.key === REFINEMENT_PROMPTS_STORAGE_KEY) refreshSavedRefinementPrompts();
     };
     window.addEventListener('storage', handleStorageChange);
-    setCurrentSettings(getStoredSettings());
+    refreshSettingsAndFuncionarios();
     refreshSavedRefinementPrompts();
 
     if (contentId) {
@@ -149,7 +162,7 @@ export function ContentFormClient({
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts, refreshSettingsAndFuncionarios]);
 
 
   const handleGenerateOrRefineContent = async (isRefinement: boolean = false, refinementInstructionsFromModal?: string) => {
@@ -181,6 +194,7 @@ export function ContentFormClient({
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
         originalContent: isRefinement ? generatedContent : undefined,
         refinementInstructions: isRefinement ? refinementInstructionsFromModal : undefined,
+        customInstructions: contentCreationFuncionario?.instrucoes,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
@@ -209,12 +223,13 @@ export function ContentFormClient({
       const result = await suggestHashtagsFlow({
         text: generatedContent,
         platform: platformFieldValue.toLowerCase() as 'instagram' | 'facebook' | 'general',
+        customInstructions: smartHashtagFuncionario?.instrucoes,
       });
       setSuggestedHashtags(result.hashtags);
       toast({ title: "Hashtags Suggested!", description: "AI has suggested relevant hashtags." });
     } catch (error) {
       console.error("Hashtag suggestion error:", error);
-      toast({ title: "AI Error", description: "Failed to suggest hashtags. Check console for details.", variant: "destructive" });
+      toast({ title: "AI Error", description: `Failed to suggest hashtags. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     setIsSuggestingHashtags(false);
   };
@@ -325,6 +340,14 @@ export function ContentFormClient({
           <CardHeader>
             <CardTitle>{contentId ? 'Edit Content' : 'Create New Content'}</CardTitle>
             <CardDescription>Fill in the details below and let AI assist you in crafting perfect posts.</CardDescription>
+            {contentCreationFuncionario && (
+                <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
+                  <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
+                    Usando instruções do funcionário: <span className="font-semibold">{contentCreationFuncionario.nome}</span> para Criação de Conteúdo.
+                  </AlertDescription>
+                </Alert>
+              )}
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -470,7 +493,6 @@ export function ContentFormClient({
               </Accordion>
             )}
 
-
             <Button type="button" onClick={() => handleGenerateOrRefineContent(false)} disabled={isLoadingAi || isRefiningContent} className="w-full md:w-auto">
               {isLoadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate Content with AI
@@ -541,6 +563,7 @@ export function ContentFormClient({
                                 value={refinementPromptText}
                                 onChange={(e) => setRefinementPromptText(e.target.value)}
                                 rows={5}
+                                suppressHydrationWarning={true}
                                 />
                             </div>
                             <div className="grid gap-2">
@@ -574,6 +597,7 @@ export function ContentFormClient({
                                       value={currentRefinementPromptName}
                                       onChange={(e) => setCurrentRefinementPromptName(e.target.value)}
                                       placeholder="e.g., Formal Tone Adjuster"
+                                      suppressHydrationWarning={true}
                                   />
                                 </div>
                                 <Button type="button" size="sm" variant="outline" onClick={handleSaveRefinementPrompt} disabled={!currentRefinementPromptName.trim() || !refinementPromptText.trim()}>
@@ -702,6 +726,14 @@ export function ContentFormClient({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><Tags className="mr-2 h-5 w-5" /> Hashtags</CardTitle>
+              {smartHashtagFuncionario && (
+                <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
+                  <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <AlertDescription className="text-indigo-700 dark:text-indigo-300">
+                    Sugestões de Hashtag usarão instruções de: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               <Button type="button" variant="outline" onClick={handleSuggestHashtags} disabled={isSuggestingHashtags || !generatedContent} className="w-full md:w-auto">
@@ -729,5 +761,3 @@ export function ContentFormClient({
     </Form>
   );
 }
-
-    

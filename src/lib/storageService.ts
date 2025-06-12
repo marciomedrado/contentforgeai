@@ -1,12 +1,13 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt } from './types';
-import { 
-  DEFAULT_OUTPUT_LANGUAGE, 
-  CONTENT_STORAGE_KEY, 
-  SETTINGS_STORAGE_KEY, 
-  THEMES_STORAGE_KEY, 
+import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt, Funcionario, Departamento } from './types';
+import {
+  DEFAULT_OUTPUT_LANGUAGE,
+  CONTENT_STORAGE_KEY,
+  SETTINGS_STORAGE_KEY,
+  THEMES_STORAGE_KEY,
   SUMMARIES_STORAGE_KEY,
-  REFINEMENT_PROMPTS_STORAGE_KEY 
+  REFINEMENT_PROMPTS_STORAGE_KEY,
+  FUNCIONARIOS_STORAGE_KEY // New key
 } from './constants';
 
 // Helper to safely interact with localStorage
@@ -74,7 +75,7 @@ export const clearAllContentItems = (): void => {
 // App Settings
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
-    openAIKey: '', 
+    openAIKey: '',
     outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     perplexityApiKey: '',
   };
@@ -119,7 +120,7 @@ export const addManualReferenceToTheme = (themeId: string, reference: ManualRefe
     if (!themes[themeIndex].manualReferences) {
       themes[themeIndex].manualReferences = [];
     }
-    themes[themeIndex].manualReferences!.unshift(reference); 
+    themes[themeIndex].manualReferences!.unshift(reference);
     saveStoredThemeSuggestions(themes);
   }
 };
@@ -209,10 +210,44 @@ export const deleteSavedRefinementPromptById = (id: string): void => {
 };
 
 
+// Funcionarios (New)
+export const getFuncionarios = (): Funcionario[] => {
+  return safeLocalStorageGet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+export const saveFuncionario = (funcionario: Funcionario): void => {
+  let funcionarios = getFuncionarios();
+  const existingIndex = funcionarios.findIndex(f => f.departamento === funcionario.departamento);
+
+  if (existingIndex > -1) {
+    // Update existing funcionario for the department
+    funcionarios[existingIndex] = { ...funcionario, id: funcionarios[existingIndex].id, createdAt: funcionarios[existingIndex].createdAt };
+  } else {
+    // Add new funcionario
+    funcionarios.unshift(funcionario);
+  }
+  safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+};
+
+export const getFuncionarioByDepartamento = (departamento: Departamento): Funcionario | undefined => {
+  const funcionarios = getFuncionarios();
+  return funcionarios.find(f => f.departamento === departamento);
+};
+
+export const deleteFuncionarioById = (id: string): void => {
+  const funcionarios = getFuncionarios();
+  safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.filter(f => f.id !== id));
+};
+
+export const clearAllFuncionarios = (): void => {
+  safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []);
+}
+
 // General Data Clearing
 export const clearAllData = (): void => {
   clearAllContentItems();
   clearAllThemeSuggestions();
   clearAllSummaries();
-  saveStoredRefinementPrompts([]); // Also clear refinement prompts
+  saveStoredRefinementPrompts([]);
+  clearAllFuncionarios(); // Add this line
 };

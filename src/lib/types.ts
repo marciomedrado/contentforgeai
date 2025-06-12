@@ -2,6 +2,8 @@
 export type Platform = "Wordpress" | "Instagram" | "Facebook";
 export type ContentStatus = "Draft" | "Scheduled" | "Published";
 
+export type Departamento = "ContentCreation" | "Summarizer" | "ThemePlanner" | "SmartHashtagSuggestions";
+
 export interface ManualReferenceItem {
   id: string;
   title?: string;
@@ -14,8 +16,8 @@ export interface ThemeSuggestion {
   userInputTopic: string;
   title: string;
   description: string;
-  keywords?: string[]; 
-  suggestedKeywords?: string[]; 
+  keywords?: string[];
+  suggestedKeywords?: string[];
   generatedAt: string;
   manualReferences?: ManualReferenceItem[];
 }
@@ -26,9 +28,9 @@ export interface ContentItem {
   topic: string;
   platform: Platform;
   content: string;
-  imagePrompts: string[]; 
+  imagePrompts: string[];
   wordCount?: number;
-  numberOfImagesRequested?: number; 
+  numberOfImagesRequested?: number;
   hashtags?: string[];
   status: ContentStatus;
   createdAt: string;
@@ -56,5 +58,13 @@ export interface SavedRefinementPrompt {
   id: string;
   name: string;
   promptText: string;
+  createdAt: string; // ISO date string
+}
+
+export interface Funcionario {
+  id: string;
+  nome: string;
+  instrucoes: string;
+  departamento: Departamento;
   createdAt: string; // ISO date string
 }

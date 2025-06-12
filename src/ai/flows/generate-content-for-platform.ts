@@ -19,13 +19,14 @@ const GenerateContentForPlatformInputSchema = z.object({
     .enum(['Wordpress', 'Instagram', 'Facebook'])
     .describe('The platform for which the content is being generated.'),
   topic: z.string().describe('The topic or brief for the content.'),
-  title: z.string().optional().describe('The working title of the content, for context.'), // Added title
+  title: z.string().optional().describe('The working title of the content, for context.'),
   wordCount: z.coerce.number().optional().describe('Approximate desired word count for the content.'),
   numberOfImages: z.coerce.number().min(0).optional().default(DEFAULT_NUMBER_OF_IMAGES).describe('The desired number of images for the content. For WordPress, >0 means embed, 0 means one general prompt. For others, one general prompt is always provided.'),
   outputLanguage: z.string().optional().default(DEFAULT_OUTPUT_LANGUAGE).describe('The desired output language for the content (e.g., "en", "pt", "es").'),
   manualReferenceTexts: z.array(z.string()).optional().describe("An array of manually added text snippets or notes to be used as additional reference material."),
   originalContent: z.string().optional().describe("Existing content to be refined. If provided, 'refinementInstructions' should also be provided."),
-  refinementInstructions: z.string().optional().describe("Specific instructions on how to refine the 'originalContent'.")
+  refinementInstructions: z.string().optional().describe("Specific instructions on how to refine the 'originalContent'."),
+  customInstructions: z.string().optional().describe('Additional custom instructions for the AI to follow, from a designated "Funcionario".'),
 });
 export type GenerateContentForPlatformInput = z.infer<typeof GenerateContentForPlatformInputSchema>;
 
@@ -35,11 +36,12 @@ const GenerateContentForPlatformOutputSchema = z.object({
 });
 export type GenerateContentForPlatformOutput = z.infer<typeof GenerateContentForPlatformOutputSchema>;
 
+// Internal schema for Gemini prompt
 const InternalPromptInputSchema = GenerateContentForPlatformInputSchema.extend({
     specificInstructions: z.string().describe('Detailed instructions tailored to the platform and requirements.')
 });
 
-const platformInstructions = (
+const platformInstructionsForGemini = (
     platform: Platform,
     wordCount?: number,
     numberOfImages?: number,
@@ -58,7 +60,6 @@ You have been provided with 'manualReferenceTexts'. These are additional notes o
 `;
   }
 
-  // Default to 1 image if not specified, for the general prompt.
   const requestedImages = numberOfImages === undefined ? 1 : numberOfImages;
 
   if (platform === 'Wordpress') {
@@ -76,7 +77,7 @@ For EACH of these ${requestedImages} image(s) you want to include:
    - The 'data-ai-hint' attribute MUST contain one or, at most, two relevant keywords extracted from the image prompt (e.g., for "A serene forest path in autumn", use "forest path" or "autumn forest"). Do not use more than two words.
 After generating all HTML content, consolidate ALL image prompts (from the <!-- IMAGE_PROMPT: ... --> comments) into the 'imagePrompt' output field of the JSON response, separated by newlines.
 `;
-    } else { // requestedImages is 0
+    } else {
       imageEmbeddingInstructions = `
 Do NOT embed any images or image prompts directly within the HTML content.
 Instead, provide ONE single, general image prompt suitable for the entire article in the 'imagePrompt' output field of the JSON response.
@@ -104,17 +105,27 @@ The generated content for the 'content' field should be ONLY the HTML for the bl
     specificInstructions = `Generate an engaging Instagram post${wordCountText}. ${langInstruction} ${detailInstruction} ${referenceInstruction} The generated content should be the text for the Instagram post. Provide a single optimized image prompt in the 'imagePrompt' output field.`;
   } else if (platform === 'Facebook') {
     specificInstructions = `Generate a compelling Facebook post${wordCountText}. ${langInstruction} ${detailInstruction} ${referenceInstruction} The generated content should be the text for the Facebook post. Provide a single optimized image prompt in the 'imagePrompt' output field.`;
-  } else { 
+  } else {
     specificInstructions = `Generate content${wordCountText}. ${langInstruction} ${detailInstruction} ${referenceInstruction} Provide a suitable image prompt in the 'imagePrompt' output field.`;
   }
   return specificInstructions;
 };
 
-const contentGenerationPrompt = ai.definePrompt({
-  name: 'generateContentForPlatformPrompt',
+// This prompt is for Gemini if OpenAI Agent is not used
+const geminiContentGenerationPrompt = ai.definePrompt({
+  name: 'generateContentForPlatformGeminiPrompt',
   input: {schema: InternalPromptInputSchema},
   output: {schema: GenerateContentForPlatformOutputSchema},
-  prompt: `You are an AI assistant specializing in creating high-quality content for various online platforms.
+  prompt: `
+{{#if customInstructions}}
+Prioritize these User-Provided Instructions:
+---
+{{{customInstructions}}}
+---
+When generating content, ensure you adhere to these instructions above all else, while still fulfilling the core task described below.
+{{/if}}
+
+You are an AI assistant specializing in creating high-quality content for various online platforms.
 {{#if originalContent}}
 You are tasked with REFINING existing content based on specific instructions.
 The original content was for platform '{{{platform}}}'{{#if title}} with the working title '{{{title}}}'{{/if}} and topic '{{{topic}}}'.
@@ -172,7 +183,82 @@ const generateContentForPlatformFlow = ai.defineFlow(
   },
   async (input: GenerateContentForPlatformInput) => {
     const lang = input.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
-    const instructions = platformInstructions(
+    const agentId = process.env.OPENAI_AGENT_ID;
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (agentId && apiKey) {
+      console.log(`Using OpenAI Agent ${agentId} for content generation.`);
+      const assistantInput = {
+        platform: input.platform,
+        topic: input.topic,
+        title: input.title,
+        wordCount: input.wordCount,
+        numberOfImages: input.platform === 'Wordpress' ? (input.numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : input.numberOfImages) : undefined,
+        outputLanguage: lang,
+        manualReferenceTexts: input.manualReferenceTexts,
+        originalContent: input.originalContent,
+        refinementInstructions: input.refinementInstructions,
+        customInstructions: input.customInstructions,
+        desiredOutputFormat: "A JSON object with 'content' (string) and 'imagePrompt' (string). Content should be HTML for Wordpress, plain text otherwise. Image prompt should be newline-separated for multiple WordPress images, or single otherwise. All text in the specified outputLanguage."
+      };
+
+      let systemInstructions = `You are an AI content generation assistant.
+      The user has provided details for content generation or refinement:
+      - Platform: ${assistantInput.platform}
+      - Topic: ${assistantInput.topic}
+      ${assistantInput.title ? `- Title: ${assistantInput.title}` : ''}
+      ${assistantInput.wordCount ? `- Word Count: Approx. ${assistantInput.wordCount}` : ''}
+      ${assistantInput.platform === 'Wordpress' && assistantInput.numberOfImages !== undefined ? `- Number of Images (WP): ${assistantInput.numberOfImages}` : ''}
+      - Output Language: ${assistantInput.outputLanguage}
+      ${assistantInput.manualReferenceTexts && assistantInput.manualReferenceTexts.length > 0 ? `- Manual References: ${assistantInput.manualReferenceTexts.join('; ')}` : ''}
+      ${assistantInput.originalContent ? `- Original Content (to refine): Provided in input` : ''}
+      ${assistantInput.refinementInstructions ? `- Refinement Instructions: ${assistantInput.refinementInstructions}` : ''}
+      ${assistantInput.customInstructions ? `- Custom Instructions (Prioritize these): ${assistantInput.customInstructions}` : ''}
+
+      Your response MUST be a single, valid JSON object strictly conforming to:
+      {
+        "content": "string (HTML for Wordpress, plain text otherwise, in ${assistantInput.outputLanguage})",
+        "imagePrompt": "string (newline-separated for multiple WP images, single otherwise, in ${assistantInput.outputLanguage})"
+      }
+      For WordPress, if numberOfImages > 0, embed <!-- IMAGE_PROMPT: ... --> comments and <img src="https://placehold.co/600x400.png" alt="[prompt]" data-ai-hint="[keywords]" /> placeholders. Consolidate all prompts into the imagePrompt field, newline-separated. If numberOfImages is 0 for WordPress, provide one general imagePrompt. For other platforms, one general imagePrompt.
+      Do NOT include any other text, explanations, or markdown formatting outside of this JSON structure.`;
+
+
+      try {
+        const {output} = await ai.runAssistant({
+          assistantId: agentId,
+          input: assistantInput,
+          instructions: systemInstructions,
+        });
+
+        if (typeof output === 'string') {
+          const parsedOutput = JSON.parse(output as string);
+          const validationResult = GenerateContentForPlatformOutputSchema.safeParse(parsedOutput);
+          if (validationResult.success) {
+            return validationResult.data;
+          } else {
+            console.error("OpenAI Agent output failed Zod validation:", validationResult.error);
+            throw new Error(`OpenAI Agent output format error: ${validationResult.error.message}`);
+          }
+        } else if (typeof output === 'object' && output !== null) {
+           const validationResult = GenerateContentForPlatformOutputSchema.safeParse(output);
+           if (validationResult.success) {
+            return validationResult.data;
+          } else {
+            console.error("OpenAI Agent object output failed Zod validation:", validationResult.error);
+            throw new Error(`OpenAI Agent object output format error: ${validationResult.error.message}`);
+          }
+        }
+        throw new Error("OpenAI Agent returned an unexpected output type.");
+      } catch (e) {
+        console.error("Error running OpenAI assistant for content generation, falling back to Gemini:", e);
+        // Fallback
+      }
+    }
+
+    // Fallback to Gemini
+    console.log("Using Gemini prompt for content generation.");
+    const geminiInstructions = platformInstructionsForGemini(
         input.platform as Platform,
         input.wordCount,
         input.numberOfImages,
@@ -180,15 +266,15 @@ const generateContentForPlatformFlow = ai.defineFlow(
         !!(input.manualReferenceTexts && input.manualReferenceTexts.length > 0)
     );
 
-    const promptInput: z.infer<typeof InternalPromptInputSchema> = {
+    const geminiPromptInput: z.infer<typeof InternalPromptInputSchema> = {
       ...input,
       outputLanguage: lang,
-      specificInstructions: instructions,
+      specificInstructions: geminiInstructions,
     };
 
-    const {output} = await contentGenerationPrompt(promptInput);
+    const {output} = await geminiContentGenerationPrompt(geminiPromptInput);
     if (!output) {
-      throw new Error("AI failed to generate content or match the output schema.");
+      throw new Error("AI (Gemini) failed to generate content or match the output schema.");
     }
     return output;
   }
