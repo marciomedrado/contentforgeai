@@ -31,7 +31,7 @@ import {
   deleteSavedRefinementPromptById,
   getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info, BrainCircuit } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -45,7 +45,6 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
-import { ActiveFuncionarioSelector } from '@/components/common/ActiveFuncionarioSelector';
 
 
 const formSchema = z.object({
@@ -95,9 +94,9 @@ export function ContentFormClient({
   const [savedRefinementPrompts, setSavedRefinementPrompts] = useState<SavedRefinementPrompt[]>([]);
   const [currentRefinementPromptName, setCurrentRefinementPromptName] = useState('');
   const [isRefiningContent, setIsRefiningContent] = useState(false);
-
-  const [contentCreationFuncionario, setContentCreationFuncionario] = useState<Funcionario | null>(null);
-  const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null); 
+  
+  const [activeContentCreationFuncionarioName, setActiveContentCreationFuncionarioName] = useState<string | null>(null);
+  const [activeThemePlannerFuncionarioName, setActiveThemePlannerFuncionarioName] = useState<string | null>(null);
 
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
@@ -116,23 +115,26 @@ export function ContentFormClient({
     setSavedRefinementPrompts(getSavedRefinementPrompts());
   }, []);
 
-  const refreshSettingsAndFuncionarios = useCallback(() => {
-    setCurrentSettings(getStoredSettings());
-    setContentCreationFuncionario(getActiveFuncionarioForDepartamento("ContentCreation") || null);
-    setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null); 
+  const refreshActiveFuncionariosNames = useCallback(() => {
+    const ccFunc = getActiveFuncionarioForDepartamento("ContentCreation");
+    setActiveContentCreationFuncionarioName(ccFunc ? ccFunc.nome : null);
+    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner");
+    setActiveThemePlannerFuncionarioName(tpFunc ? tpFunc.nome : null);
   }, []);
 
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === SETTINGS_STORAGE_KEY ||
-          event.key === FUNCIONARIOS_STORAGE_KEY ||
-          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
-        refreshSettingsAndFuncionarios();
+      if (event.key === SETTINGS_STORAGE_KEY) {
+        setCurrentSettings(getStoredSettings());
+      }
+      if (event.key === FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
+        refreshActiveFuncionariosNames();
       }
       if (event.key === REFINEMENT_PROMPTS_STORAGE_KEY) refreshSavedRefinementPrompts();
     };
     window.addEventListener('storage', handleStorageChange);
-    refreshSettingsAndFuncionarios();
+    setCurrentSettings(getStoredSettings());
+    refreshActiveFuncionariosNames();
     refreshSavedRefinementPrompts();
 
     if (contentId) {
@@ -164,13 +166,12 @@ export function ContentFormClient({
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts, refreshSettingsAndFuncionarios]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts, refreshActiveFuncionariosNames]);
 
 
   const handleGenerateOrRefineContent = async (isRefinement: boolean = false, refinementInstructionsFromModal?: string) => {
     const { platform, topic, wordCount, numberOfImages, title } = form.getValues();
     const activeContentCreationFuncionario = getActiveFuncionarioForDepartamento("ContentCreation");
-
 
     if (!isRefinement && !topic) {
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
@@ -345,7 +346,15 @@ export function ContentFormClient({
           <CardHeader>
             <CardTitle>{contentId ? 'Edit Content' : 'Create New Content'}</CardTitle>
             <CardDescription>Fill in the details below and let AI assist you in crafting perfect posts.</CardDescription>
-             <ActiveFuncionarioSelector departamento="ContentCreation" className="mt-4" />
+             <Alert variant="default" className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700 text-xs py-2">
+                <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDesc className="text-blue-700 dark:text-blue-300">
+                  {activeContentCreationFuncionarioName
+                    ? <>Geração de conteúdo usará instruções de: <span className="font-semibold">{activeContentCreationFuncionarioName}</span>.</>
+                    : "Nenhum funcionário personalizado ativo para Criação de Conteúdo. Usando prompt padrão do sistema."}
+                  {" (Configurado em Treinamento)"}
+                </AlertDesc>
+              </Alert>
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -724,27 +733,32 @@ export function ContentFormClient({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><Tags className="mr-2 h-5 w-5" /> Hashtags</CardTitle>
-              {themePlannerFuncionario ? (
-                <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
-                  <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <AlertDesc className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de Hashtag usarão instruções do funcionário ativo para Planejador de Temas: <span className="font-semibold">{themePlannerFuncionario.nome}</span>.
-                  </AlertDesc>
+                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs py-2">
+                    <BrainCircuit className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <AlertDesc className="text-indigo-700 dark:text-indigo-300">
+                    {activeThemePlannerFuncionarioName
+                        ? <>Sugestões de Hashtag usarão instruções de: <span className="font-semibold">{activeThemePlannerFuncionarioName}</span>.</>
+                        : "Nenhum funcionário personalizado ativo para Planejador de Temas. Hashtags usarão prompt padrão."}
+                    {" (Configurado em Treinamento)"}
+                    </AlertDesc>
                 </Alert>
-                 ) : (
-                <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600 text-xs">
-                  <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                  <AlertDesc className="text-gray-700 dark:text-gray-300">
-                     Nenhum funcionário ativo para Planejador de Temas. Hashtags usarão prompt padrão.
-                  </AlertDesc>
-                </Alert>
-            )}
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button type="button" variant="outline" onClick={handleSuggestHashtags} disabled={isSuggestingHashtags || !generatedContent} className="w-full md:w-auto">
-                {isSuggestingHashtags ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Suggest Hashtags
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button type="button" variant="outline" onClick={handleSuggestHashtags} disabled={isSuggestingHashtags || !generatedContent}>
+                  {isSuggestingHashtags ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                  Suggest Hashtags
+                </Button>
+                {suggestedHashtags.length > 0 && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleCopyText(suggestedHashtags.map(h => `#${h}`).join(' '), "Hashtags copiadas!")}
+                    >
+                        <Copy className="mr-2 h-4 w-4" /> Copiar Hashtags
+                    </Button>
+                )}
+              </div>
               {suggestedHashtags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {suggestedHashtags.map(tag => (
@@ -766,3 +780,5 @@ export function ContentFormClient({
     </Form>
   );
 }
+
+    

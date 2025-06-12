@@ -26,7 +26,7 @@ import {
   deleteKeywordFromTheme,
   getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info, Copy, BrainCircuit } from 'lucide-react';
 import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,7 +53,6 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
-import { ActiveFuncionarioSelector } from '@/components/common/ActiveFuncionarioSelector';
 
 
 const themePlannerSchema = z.object({
@@ -89,8 +88,7 @@ export function ThemePlannerClient() {
 
   const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null);
 
-  // No longer need themePlannerFuncionario state, ActiveFuncionarioSelector handles display
-  // const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null);
+  const [activeThemePlannerFuncionarioName, setActiveThemePlannerFuncionarioName] = useState<string | null>(null);
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -104,7 +102,8 @@ export function ThemePlannerClient() {
 
   const refreshSettingsAndActiveFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
-    // setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null); // Handled by ActiveFuncionarioSelector
+    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner");
+    setActiveThemePlannerFuncionarioName(tpFunc ? tpFunc.nome : null);
   }, []);
 
   useEffect(() => {
@@ -241,6 +240,20 @@ export function ThemePlannerClient() {
     toast({ title: "Keyword Deleted", description: `Keyword "${keywordToDelete}" has been removed.`});
   }, [refreshStoredThemes, toast]);
 
+  const handleCopyText = (textToCopy: string, successMessage: string) => {
+    if (!textToCopy) {
+        toast({ title: "Nada para Copiar", description: "Não há texto para copiar.", variant: "destructive" });
+        return;
+    }
+    navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+            toast({ title: "Copiado!", description: successMessage });
+        })
+        .catch(err => {
+            console.error("Falha ao copiar: ", err);
+            toast({ title: "Falha ao Copiar", description: "Não foi possível copiar o texto.", variant: "destructive" });
+        });
+  };
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
     const selectedManualRefsContents = (theme.manualReferences || [])
@@ -265,7 +278,15 @@ export function ThemePlannerClient() {
         <CardHeader>
           <CardTitle>Proactive Theme Planner</CardTitle>
           <CardDescription>Let AI help you brainstorm content themes. Enter a general topic and get suggestions for titles, descriptions, and keywords.</CardDescription>
-           <ActiveFuncionarioSelector departamento="ThemePlanner" className="mt-4" />
+            <Alert variant="default" className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700 text-xs py-2">
+                <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDesc className="text-blue-700 dark:text-blue-300">
+                {activeThemePlannerFuncionarioName
+                    ? <>Planejamento de temas e sugestões de palavras-chave usarão instruções de: <span className="font-semibold">{activeThemePlannerFuncionarioName}</span>.</>
+                    : "Nenhum funcionário personalizado ativo para Planejador de Temas. Usando prompt padrão do sistema."}
+                {" (Configurado em Treinamento)"}
+                </AlertDesc>
+            </Alert>
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onThemeSuggestSubmit)}>
@@ -349,7 +370,7 @@ export function ThemePlannerClient() {
         <Card>
           <CardHeader>
             <CardTitle>Saved Theme Ideas</CardTitle>
-            <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content. Active Funcionario for Theme Planning and Keyword Suggestions is managed above.</CardDescription>
+            <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {storedThemeSuggestions.map((suggestion) => (
@@ -398,11 +419,23 @@ export function ThemePlannerClient() {
                 </div>
 
                 <div className="my-4 p-3 border-t border-dashed">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
                     <h5 className="text-md font-semibold flex items-center"><Tags className="mr-2 h-5 w-5 text-primary"/>AI Keyword/Search Term Ideas</h5>
-                    <Button variant="outline" size="sm" onClick={() => handleSuggestKeywordsForTheme(suggestion)} disabled={isLoadingSuggestedKeywords === suggestion.id}>
-                      {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Terms
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleSuggestKeywordsForTheme(suggestion)} disabled={isLoadingSuggestedKeywords === suggestion.id}>
+                        {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Terms
+                        </Button>
+                        {suggestion.suggestedKeywords && suggestion.suggestedKeywords.length > 0 && (
+                             <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCopyText(suggestion.suggestedKeywords!.join(', '), "Termos sugeridos copiados!")}
+                            >
+                                <Copy className="mr-2 h-4 w-4" /> Copiar Termos
+                            </Button>
+                        )}
+                    </div>
                   </div>
                   {suggestion.suggestedKeywords && suggestion.suggestedKeywords.length > 0 ? (
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -434,7 +467,7 @@ export function ThemePlannerClient() {
                           <PlusCircle className="mr-2 h-4 w-4" /> Add Note
                         </Button>
                       </DialogTrigger>
-                      {currentThemeForManualRef?.id === suggestion.id && ( // Ensure modal content only renders for the correct theme
+                      {currentThemeForManualRef?.id === suggestion.id && ( 
                         <DialogContent>
                           <DialogHeader>
                             <DialogTitle>Add Manual Note for "{currentThemeForManualRef.title}"</DialogTitle>
@@ -523,3 +556,5 @@ export function ThemePlannerClient() {
     </div>
   );
 }
+
+    
