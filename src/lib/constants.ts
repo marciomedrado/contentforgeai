@@ -9,9 +9,9 @@ export const DEFAULT_NUMBER_OF_IMAGES = 1;
 
 export const NAV_LINKS = [
   { href: "/", label: "Dashboard", iconName: "LayoutDashboard" },
-  { href: "/content/new", label: "Create Content", iconName: "PlusCircle" },
   { href: "/themes", label: "Theme Planner", iconName: "Lightbulb" },
   { href: "/summarizer", label: "Summarizer", iconName: "FileText" },
+  { href: "/content/new", label: "Create Content", iconName: "PlusCircle" },
   { href: "/settings", label: "Settings", iconName: "SettingsIcon" },
 ];
 
@@ -44,3 +44,4 @@ export const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
 export const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';
 export const SUMMARIES_STORAGE_KEY = 'contentForgeAi_summaries';
 export const REFINEMENT_PROMPTS_STORAGE_KEY = 'contentForgeAi_refinementPrompts';
+
