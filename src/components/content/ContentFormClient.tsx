@@ -44,7 +44,9 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert'; // Renamed to avoid conflict
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
+import { ActiveFuncionarioSelector } from '@/components/common/ActiveFuncionarioSelector';
+
 
 const formSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
@@ -95,7 +97,7 @@ export function ContentFormClient({
   const [isRefiningContent, setIsRefiningContent] = useState(false);
 
   const [contentCreationFuncionario, setContentCreationFuncionario] = useState<Funcionario | null>(null);
-  const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null); // For hashtag suggestions
+  const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null); 
 
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
@@ -117,7 +119,7 @@ export function ContentFormClient({
   const refreshSettingsAndFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
     setContentCreationFuncionario(getActiveFuncionarioForDepartamento("ContentCreation") || null);
-    setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null); // Get ThemePlanner Funcionario
+    setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null); 
   }, []);
 
   useEffect(() => {
@@ -167,6 +169,8 @@ export function ContentFormClient({
 
   const handleGenerateOrRefineContent = async (isRefinement: boolean = false, refinementInstructionsFromModal?: string) => {
     const { platform, topic, wordCount, numberOfImages, title } = form.getValues();
+    const activeContentCreationFuncionario = getActiveFuncionarioForDepartamento("ContentCreation");
+
 
     if (!isRefinement && !topic) {
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
@@ -194,7 +198,7 @@ export function ContentFormClient({
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
         originalContent: isRefinement ? generatedContent : undefined,
         refinementInstructions: isRefinement ? refinementInstructionsFromModal : undefined,
-        customInstructions: contentCreationFuncionario?.instrucoes,
+        customInstructions: activeContentCreationFuncionario?.instrucoes,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
@@ -217,13 +221,14 @@ export function ContentFormClient({
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
 
     setIsSuggestingHashtags(true);
     try {
       const result = await suggestHashtagsFlow({
         text: generatedContent,
         platform: platformFieldValue.toLowerCase() as 'instagram' | 'facebook' | 'general',
-        customInstructions: themePlannerFuncionario?.instrucoes, // Use ThemePlanner Funcionario instructions
+        customInstructions: activeThemePlannerFuncionario?.instrucoes,
       });
       setSuggestedHashtags(result.hashtags);
       toast({ title: "Hashtags Suggested!", description: "AI has suggested relevant hashtags." });
@@ -340,21 +345,7 @@ export function ContentFormClient({
           <CardHeader>
             <CardTitle>{contentId ? 'Edit Content' : 'Create New Content'}</CardTitle>
             <CardDescription>Fill in the details below and let AI assist you in crafting perfect posts.</CardDescription>
-            {contentCreationFuncionario ? (
-                <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
-                  <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <AlertDesc className="text-blue-700 dark:text-blue-300 text-xs">
-                    Usando instruções do funcionário ativo: <span className="font-semibold">{contentCreationFuncionario.nome}</span> para Criação de Conteúdo.
-                  </AlertDesc>
-                </Alert>
-              ) : (
-                <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
-                 <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                  <AlertDesc className="text-gray-700 dark:text-gray-300 text-xs">
-                    Nenhum funcionário ativo para Criação de Conteúdo. Usando prompt padrão.
-                  </AlertDesc>
-                </Alert>
-            )}
+             <ActiveFuncionarioSelector departamento="ContentCreation" className="mt-4" />
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -737,14 +728,14 @@ export function ContentFormClient({
                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
                   <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                   <AlertDesc className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de Hashtag usarão instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> (Planejador de Temas).
+                    Sugestões de Hashtag usarão instruções do funcionário ativo para Planejador de Temas: <span className="font-semibold">{themePlannerFuncionario.nome}</span>.
                   </AlertDesc>
                 </Alert>
                  ) : (
                 <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600 text-xs">
                   <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                   <AlertDesc className="text-gray-700 dark:text-gray-300">
-                     Nenhum funcionário ativo para Planejador de Temas (usado para Hashtags). Usando prompt padrão.
+                     Nenhum funcionário ativo para Planejador de Temas. Hashtags usarão prompt padrão.
                   </AlertDesc>
                 </Alert>
             )}

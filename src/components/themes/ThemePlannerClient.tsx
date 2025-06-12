@@ -52,7 +52,9 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert'; // Renamed to avoid conflict
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
+import { ActiveFuncionarioSelector } from '@/components/common/ActiveFuncionarioSelector';
+
 
 const themePlannerSchema = z.object({
   topic: z.string().min(5, "Topic must be at least 5 characters."),
@@ -87,8 +89,8 @@ export function ThemePlannerClient() {
 
   const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null);
 
-  const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null);
-  // No need for smartHashtagFuncionario state, as ThemePlanner Funcionario will be used
+  // No longer need themePlannerFuncionario state, ActiveFuncionarioSelector handles display
+  // const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null);
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -102,7 +104,7 @@ export function ThemePlannerClient() {
 
   const refreshSettingsAndActiveFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
-    setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null);
+    // setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null); // Handled by ActiveFuncionarioSelector
   }, []);
 
   useEffect(() => {
@@ -130,12 +132,13 @@ export function ThemePlannerClient() {
   const onThemeSuggestSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
     try {
       const result = await suggestThemes({
         topic: data.topic,
         numSuggestions: data.numSuggestions,
         outputLanguage: currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
-        customInstructions: themePlannerFuncionario?.instrucoes,
+        customInstructions: activeThemePlannerFuncionario?.instrucoes,
       });
       setGeneratedThemesList(result.themes);
       toast({ title: "Themes Suggested!", description: "AI has generated theme ideas for your topic." });
@@ -214,11 +217,12 @@ export function ThemePlannerClient() {
 
   const handleSuggestKeywordsForTheme = async (theme: ThemeSuggestion) => {
     setIsLoadingSuggestedKeywords(theme.id);
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
         platform: 'general',
-        customInstructions: themePlannerFuncionario?.instrucoes, // Use ThemePlanner Funcionario instructions
+        customInstructions: activeThemePlannerFuncionario?.instrucoes,
       });
       const processedKeywords = result.hashtags.map(kw => kw.startsWith('#') ? kw.substring(1) : kw);
       updateThemeWithSuggestedKeywords(theme.id, processedKeywords);
@@ -261,21 +265,7 @@ export function ThemePlannerClient() {
         <CardHeader>
           <CardTitle>Proactive Theme Planner</CardTitle>
           <CardDescription>Let AI help you brainstorm content themes. Enter a general topic and get suggestions for titles, descriptions, and keywords.</CardDescription>
-           {themePlannerFuncionario ? (
-            <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
-              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <AlertDesc className="text-blue-700 dark:text-blue-300 text-xs">
-                Usando instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> para o Planejador de Temas (e sugestões de palavras-chave).
-              </AlertDesc>
-            </Alert>
-          ) : (
-            <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
-                <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                <AlertDesc className="text-gray-700 dark:text-gray-300 text-xs">
-                  Nenhum funcionário ativo para o Planejador de Temas. Usando prompt padrão.
-                </AlertDesc>
-            </Alert>
-          )}
+           <ActiveFuncionarioSelector departamento="ThemePlanner" className="mt-4" />
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onThemeSuggestSubmit)}>
@@ -359,16 +349,7 @@ export function ThemePlannerClient() {
         <Card>
           <CardHeader>
             <CardTitle>Saved Theme Ideas</CardTitle>
-            <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content.</CardDescription>
-              {themePlannerFuncionario && ( // Alert for keyword suggestions if ThemePlanner Funcionario is active
-                <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
-                  <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <AlertDesc className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de termos/palavras-chave usarão instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> (Planejador de Temas).
-                  </AlertDesc>
-                </Alert>
-                )
-              }
+            <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content. Active Funcionario for Theme Planning and Keyword Suggestions is managed above.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {storedThemeSuggestions.map((suggestion) => (

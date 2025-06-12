@@ -22,7 +22,7 @@ import {
   getStoredThemeSuggestions,
   addManualReferenceToTheme,
   getStoredSettings,
-  getActiveFuncionarioForDepartamento, // Updated
+  getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
 import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings, Funcionario } from '@/lib/types';
 import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle, Eye, Info } from 'lucide-react';
@@ -51,6 +51,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ActiveFuncionarioSelector } from '@/components/common/ActiveFuncionarioSelector';
 
 
 const summarizerFormSchema = z.object({
@@ -75,7 +76,8 @@ export function SummarizerClient() {
   const [isViewContentModalOpen, setIsViewContentModalOpen] = useState(false);
   const [summaryToView, setSummaryToView] = useState<SummarizationItem | null>(null);
 
-  const [summarizerFuncionario, setSummarizerFuncionario] = useState<Funcionario | null>(null);
+  // No longer need summarizerFuncionario state here, ActiveFuncionarioSelector handles display
+  // const [summarizerFuncionario, setSummarizerFuncionario] = useState<Funcionario | null>(null);
 
   const form = useForm<SummarizerFormData>({
     resolver: zodResolver(summarizerFormSchema),
@@ -93,7 +95,7 @@ export function SummarizerClient() {
     if (typeof window !== 'undefined') {
       const currentSettings = getStoredSettings();
       form.setValue('outputLanguage', currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
-      setSummarizerFuncionario(getActiveFuncionarioForDepartamento("Summarizer") || null);
+      // setSummarizerFuncionario(getActiveFuncionarioForDepartamento("Summarizer") || null); // Handled by ActiveFuncionarioSelector
     }
   }, [form]);
 
@@ -119,11 +121,12 @@ export function SummarizerClient() {
   const onSummarizeSubmit: SubmitHandler<SummarizerFormData> = async (data) => {
     setIsLoading(true);
     setSummaryOutput('');
+    const activeSummarizerFuncionario = getActiveFuncionarioForDepartamento("Summarizer");
     try {
       const result = await summarizeTextFlow({
         textToSummarize: data.inputText,
         outputLanguage: data.outputLanguage,
-        customInstructions: summarizerFuncionario?.instrucoes,
+        customInstructions: activeSummarizerFuncionario?.instrucoes,
       });
       setSummaryOutput(result.summary);
       toast({ title: "Summary Generated!", description: "AI has summarized your text." });
@@ -255,21 +258,7 @@ export function SummarizerClient() {
         <CardHeader>
           <CardTitle>Text Summarizer</CardTitle>
           <CardDescription>Input your text below and select the desired language for the summary. The AI will generate a concise overview.</CardDescription>
-          {summarizerFuncionario ? (
-            <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
-              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
-                Usando instruções do funcionário ativo: <span className="font-semibold">{summarizerFuncionario.nome}</span> para o Sumarizador.
-              </AlertDescription>
-            </Alert>
-            ) : (
-             <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
-                <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
-                  Nenhum funcionário ativo para o Sumarizador. Usando prompt padrão.
-                </AlertDescription>
-            </Alert>
-          )}
+          <ActiveFuncionarioSelector departamento="Summarizer" className="mt-4" />
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSummarizeSubmit)}>
