@@ -2,7 +2,6 @@
 export type Platform = "Wordpress" | "Instagram" | "Facebook";
 export type ContentStatus = "Draft" | "Scheduled" | "Published";
 
-// Updated: Removed "SmartHashtagSuggestions"
 export type Departamento = "ContentCreation" | "Summarizer" | "ThemePlanner";
 
 export interface ManualReferenceItem {
@@ -62,10 +61,13 @@ export interface SavedRefinementPrompt {
   createdAt: string; // ISO date string
 }
 
+export type FuncionarioStatus = 'Active' | 'Vacation';
+
 export interface Funcionario {
   id: string;
   nome: string;
   instrucoes: string;
   departamento: Departamento;
   createdAt: string; // ISO date string
+  status?: FuncionarioStatus;
 }

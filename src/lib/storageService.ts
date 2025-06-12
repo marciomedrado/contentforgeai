@@ -1,5 +1,5 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt, Funcionario, Departamento } from './types';
+import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt, Funcionario, Departamento, FuncionarioStatus } from './types';
 import {
   DEFAULT_OUTPUT_LANGUAGE,
   CONTENT_STORAGE_KEY,
@@ -225,13 +225,15 @@ export const getFuncionarios = (): Funcionario[] => {
 export const saveFuncionario = (funcionario: Funcionario): void => {
   let funcionarios = getFuncionarios();
   const existingIndex = funcionarios.findIndex(f => f.id === funcionario.id);
+  const funcionarioToSave = { ...funcionario, status: funcionario.status || 'Active' };
+
 
   if (existingIndex > -1) {
     // Update existing funcionario
-    funcionarios[existingIndex] = funcionario;
+    funcionarios[existingIndex] = funcionarioToSave;
   } else {
     // Add new funcionario
-    funcionarios.unshift(funcionario);
+    funcionarios.unshift(funcionarioToSave);
   }
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 };
@@ -245,13 +247,13 @@ export const deleteFuncionarioById = (id: string): void => {
   const funcionarios = getFuncionarios();
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.filter(f => f.id !== id));
   
+  // If the deleted funcionario was active, deactivate it
   const activeFuncionarios = getActiveFuncionariosMap();
   let changed = false;
-  
   DEPARTAMENTOS.forEach(depInfo => {
-    const dep = depInfo.value as Departamento; // Cast to Departamento
+    const dep = depInfo.value as Departamento;
     if (activeFuncionarios[dep] === id) {
-      delete activeFuncionarios[dep]; // Use delete for object properties
+      activeFuncionarios[dep] = null;
       changed = true;
     }
   });
@@ -265,6 +267,32 @@ export const clearAllFuncionarios = (): void => {
   safeLocalStorageSet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
 };
 
+export const setFuncionarioStatus = (funcionarioId: string, status: FuncionarioStatus): void => {
+  let funcionarios = getFuncionarios();
+  const funcionarioIndex = funcionarios.findIndex(f => f.id === funcionarioId);
+  if (funcionarioIndex > -1) {
+    funcionarios[funcionarioIndex].status = status;
+    safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios);
+
+    // If set to 'Vacation', deactivate from all departments
+    if (status === 'Vacation') {
+      const activeMap = getActiveFuncionariosMap();
+      let activeMapChanged = false;
+      DEPARTAMENTOS.forEach(depInfo => {
+        const departamento = depInfo.value as Departamento;
+        if (activeMap[departamento] === funcionarioId) {
+          activeMap[departamento] = null;
+          activeMapChanged = true;
+        }
+      });
+      if (activeMapChanged) {
+        saveActiveFuncionariosMap(activeMap);
+      }
+    }
+  }
+};
+
+
 // Active Funcionarios Management
 const getActiveFuncionariosMap = (): Record<string, string | null> => {
   return safeLocalStorageGet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
@@ -277,7 +305,7 @@ const saveActiveFuncionariosMap = (map: Record<string, string | null>): void => 
 export const setActiveFuncionarioForDepartamento = (departamento: Departamento, funcionarioId: string | null): void => {
   const activeMap = getActiveFuncionariosMap();
   if (funcionarioId === null || funcionarioId === '') {
-    delete activeMap[departamento];
+    activeMap[departamento] = null; // Ensure null is set for deactivation
   } else {
     activeMap[departamento] = funcionarioId;
   }
@@ -292,7 +320,12 @@ export const getActiveFuncionarioIdForDepartamento = (departamento: Departamento
 export const getActiveFuncionarioForDepartamento = (departamento: Departamento): Funcionario | null => {
   const activeId = getActiveFuncionarioIdForDepartamento(departamento);
   if (!activeId) return null;
-  return getFuncionarioById(activeId) || null;
+  const funcionario = getFuncionarioById(activeId);
+  // Ensure only active (not on vacation) funcionarios are returned
+  if (funcionario && (funcionario.status === 'Active' || !funcionario.status)) {
+    return funcionario;
+  }
+  return null;
 };
 
 

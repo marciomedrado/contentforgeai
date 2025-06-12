@@ -1,11 +1,11 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Funcionario, Departamento } from '@/lib/types';
+import type { Funcionario, Departamento, FuncionarioStatus } from '@/lib/types';
 import { DEPARTAMENTOS, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import {
   getFuncionarios,
@@ -13,6 +13,7 @@ import {
   deleteFuncionarioById,
   setActiveFuncionarioForDepartamento,
   getActiveFuncionarioIdForDepartamento,
+  setFuncionarioStatus,
 } from '@/lib/storageService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,23 +23,24 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3 } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription as AlertDialogDesc, // Renamed to avoid conflict
+  AlertDialogDescription as AlertDialogDesc,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from '@/components/ui/badge';
 
 const funcionarioFormSchema = z.object({
   nome: z.string().min(3, "O nome do funcionário deve ter pelo menos 3 caracteres."),
   instrucoes: z.string().min(10, "As instruções devem ter pelo menos 10 caracteres."),
-  departamento: z.enum(["ContentCreation", "Summarizer", "ThemePlanner"], { // Updated: Removed SmartHashtagSuggestions
+  departamento: z.enum(["ContentCreation", "Summarizer", "ThemePlanner"], {
     required_error: "Por favor, selecione um departamento.",
   }),
 });
@@ -68,7 +70,7 @@ export function TrainingClient() {
 
   const refreshActiveFuncionarios = useCallback(() => {
     const activeIds: Record<string, string | null> = {};
-    DEPARTAMENTOS.forEach(dep => { // DEPARTAMENTOS now only has valid ones
+    DEPARTAMENTOS.forEach(dep => {
       activeIds[dep.value] = getActiveFuncionarioIdForDepartamento(dep.value);
     });
     setActiveFuncionarioIds(activeIds);
@@ -81,6 +83,8 @@ export function TrainingClient() {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === FUNCIONARIOS_STORAGE_KEY) {
         refreshAllFuncionarios();
+        // Also refresh active if a funcionario was deleted/changed and might have been active
+        refreshActiveFuncionarios(); 
       }
       if (event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
         refreshActiveFuncionarios();
@@ -97,6 +101,7 @@ export function TrainingClient() {
       instrucoes: data.instrucoes,
       departamento: data.departamento as Departamento,
       createdAt: editingFuncionario?.createdAt || new Date().toISOString(),
+      status: editingFuncionario?.status || 'Active', // Preserve status if editing, else default to Active
     };
 
     saveFuncionario(newFuncionario);
@@ -106,7 +111,6 @@ export function TrainingClient() {
     });
     form.reset({ nome: '', instrucoes: '', departamento: undefined });
     setEditingFuncionario(null);
-    // No need to refreshAllFuncionarios() here as saveFuncionario already triggers storage event.
   };
 
   const handleEditFuncionario = (funcionario: Funcionario) => {
@@ -120,10 +124,10 @@ export function TrainingClient() {
   };
 
   const handleDelete = (id: string, nome: string) => {
-    deleteFuncionarioById(id); // This will also trigger storage event for FUNCIONARIOS_STORAGE_KEY and ACTIVE_FUNCIONARIOS_STORAGE_KEY if needed
+    deleteFuncionarioById(id);
     toast({
       title: "Funcionário Demitido!",
-      description: `O funcionário "${nome}" foi removido.`,
+      description: `O funcionário "${nome}" foi removido permanentemente.`,
     });
     if (editingFuncionario?.id === id) {
         form.reset({ nome: '', instrucoes: '', departamento: undefined });
@@ -131,14 +135,34 @@ export function TrainingClient() {
     }
   };
 
-  const handleSetActiveFuncionario = (departamento: Departamento, funcionarioIdOrSpecialValue: string) => {
+  const handleSetActive = (departamento: Departamento, funcionarioIdOrSpecialValue: string) => {
     const idToSet = funcionarioIdOrSpecialValue === NONE_VALUE_FOR_SELECT ? null : funcionarioIdOrSpecialValue;
-    setActiveFuncionarioForDepartamento(departamento, idToSet); // This will trigger storage event for ACTIVE_FUNCIONARIOS_STORAGE_KEY
+    setActiveFuncionarioForDepartamento(departamento, idToSet);
     toast({
       title: "Funcionário Ativo Atualizado!",
       description: `Configuração para ${DEPARTAMENTOS.find(d => d.value === departamento)?.label} atualizada.`,
     });
   };
+
+  const handleChangeFuncionarioStatus = (id: string, newStatus: FuncionarioStatus) => {
+    setFuncionarioStatus(id, newStatus);
+    const funcionario = allFuncionarios.find(f => f.id === id);
+    toast({
+      title: `Status Alterado!`,
+      description: `Funcionário "${funcionario?.nome}" agora está ${newStatus === 'Vacation' ? 'de Férias' : 'Ativo'}.`,
+    });
+  };
+
+  const activeAndEditableFuncionarios = useMemo(
+    () => allFuncionarios.filter(f => f.status === 'Active' || !f.status),
+    [allFuncionarios]
+  );
+
+  const vacationingFuncionarios = useMemo(
+    () => allFuncionarios.filter(f => f.status === 'Vacation'),
+    [allFuncionarios]
+  );
+
 
   return (
     <div className="space-y-8">
@@ -151,7 +175,7 @@ export function TrainingClient() {
           <CardDescription>
             {editingFuncionario
               ? `Modifique os detalhes do funcionário "${editingFuncionario.nome}".`
-              : "Crie 'Funcionários' com instruções específicas, atribua-os a 'Departamentos' e depois ative-os abaixo."}
+              : "Crie 'Funcionários' com instruções específicas, atribua-os a 'Departamentos'."}
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -179,7 +203,7 @@ export function TrainingClient() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                       disabled={!!editingFuncionario} // Keep disabled when editing
+                       disabled={!!editingFuncionario}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -187,7 +211,7 @@ export function TrainingClient() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {DEPARTAMENTOS.map((dep) => ( // DEPARTAMENTOS is now filtered
+                        {DEPARTAMENTOS.map((dep) => (
                           <SelectItem key={dep.value} value={dep.value}>
                             {dep.label}
                           </SelectItem>
@@ -245,27 +269,27 @@ export function TrainingClient() {
                 Gerenciar Funcionários Ativos por Departamento
             </CardTitle>
             <CardDescription>
-                Selecione qual funcionário (se houver) deve estar ativo para cada departamento. As instruções do funcionário ativo serão usadas.
+                Selecione qual funcionário (ativo) deve estar ativo para cada departamento. As instruções do funcionário ativo serão usadas.
             </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-            {DEPARTAMENTOS.map(dep => { // DEPARTAMENTOS is now filtered
-                const funcionariosNesteDepartamento = allFuncionarios.filter(f => f.departamento === dep.value);
+            {DEPARTAMENTOS.map(dep => {
+                const funcionariosNesteDepartamentoAtivos = allFuncionarios.filter(f => f.departamento === dep.value && (f.status === 'Active' || !f.status));
                 const currentActiveIdForDep = activeFuncionarioIds[dep.value];
                 return (
                     <div key={dep.value} className="space-y-2 p-3 border rounded-md shadow-sm">
                         <Label className="font-semibold">{dep.label}</Label>
                         <Select
                             value={currentActiveIdForDep || NONE_VALUE_FOR_SELECT}
-                            onValueChange={(funcionarioIdOrSpecialValue) => handleSetActiveFuncionario(dep.value as Departamento, funcionarioIdOrSpecialValue)}
+                            onValueChange={(funcionarioIdOrSpecialValue) => handleSetActive(dep.value as Departamento, funcionarioIdOrSpecialValue)}
                         >
                             <SelectTrigger>
                                 <SelectValue placeholder="Nenhum (Padrão do Sistema)" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE_VALUE_FOR_SELECT}>Nenhum (Padrão do Sistema)</SelectItem>
-                                {funcionariosNesteDepartamento.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário criado para este departamento</SelectItem>}
-                                {funcionariosNesteDepartamento.map(func => (
+                                {funcionariosNesteDepartamentoAtivos.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário ativo criado para este departamento</SelectItem>}
+                                {funcionariosNesteDepartamentoAtivos.map(func => (
                                     <SelectItem key={func.id} value={func.id}>{func.nome}</SelectItem>
                                 ))}
                             </SelectContent>
@@ -277,17 +301,17 @@ export function TrainingClient() {
       </Card>
 
 
-      {allFuncionarios.length > 0 && (
+      {activeAndEditableFuncionarios.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <Users className="mr-2 h-6 w-6 text-primary" />
-              Quadro de Todos os Funcionários Criados
+              Quadro de Funcionários Ativos
             </CardTitle>
-            <CardDescription>Gerencie todos os funcionários existentes. Ative-os na seção acima.</CardDescription>
+            <CardDescription>Gerencie os funcionários atualmente ativos. Você pode editá-los, colocá-los de férias ou demiti-los.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {allFuncionarios.map((func) => (
+            {activeAndEditableFuncionarios.map((func) => (
               <Card key={func.id} className="p-4 shadow-sm">
                 <div className="flex justify-between items-start">
                   <div>
@@ -296,10 +320,16 @@ export function TrainingClient() {
                       Departamento: <span className="font-medium text-primary">{DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Criado em: {new Date(func.createdAt).toLocaleDateString()}</p>
+                    <Badge variant={func.status === 'Vacation' ? 'outline' : 'secondary'} className="mt-1">
+                        {func.status === 'Vacation' ? 'De Férias' : 'Ativo'}
+                    </Badge>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
                      <Button variant="outline" size="sm" onClick={() => handleEditFuncionario(func)}>
                         <Edit3 className="mr-1 h-4 w-4"/> Editar
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleChangeFuncionarioStatus(func.id, 'Vacation')}>
+                        <Coffee className="mr-1 h-4 w-4"/> Colocar em Férias
                       </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -314,7 +344,7 @@ export function TrainingClient() {
                             <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/>Demitir Funcionário?
                           </AlertDialogTitle>
                           <AlertDialogDesc>
-                            Esta ação removerá permanentemente o funcionário "{func.nome}" do departamento de {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label}. As instruções serão perdidas. Se este funcionário estiver ativo para algum departamento, ele será desativado. Deseja continuar?
+                            Esta ação removerá permanentemente o funcionário "{func.nome}". Deseja continuar?
                           </AlertDialogDesc>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -338,6 +368,80 @@ export function TrainingClient() {
           </CardContent>
         </Card>
       )}
+
+      {vacationingFuncionarios.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Briefcase className="mr-2 h-6 w-6 text-muted-foreground" />
+              Funcionários em Férias (Arquivados)
+            </CardTitle>
+            <CardDescription>Funcionários que estão de férias. Você pode reativá-los ou demiti-los.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {vacationingFuncionarios.map((func) => (
+              <Card key={func.id} className="p-4 shadow-sm bg-muted/50">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-lg font-semibold text-muted-foreground">{func.nome}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Departamento: {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Em férias desde: {new Date(func.createdAt).toLocaleDateString()}</p>
+                     <Badge variant={'outline'} className="mt-1 text-muted-foreground border-muted-foreground/50">
+                        De Férias
+                    </Badge>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
+                      <Button variant="outline" size="sm" onClick={() => handleChangeFuncionarioStatus(func.id, 'Active')}>
+                        <PlayCircle className="mr-1 h-4 w-4"/> Reativar
+                      </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm" className="bg-destructive/80 hover:bg-destructive/70">
+                          <Trash2 className="mr-1 h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Demitir</span>
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                           <AlertDialogTitle className="flex items-center">
+                            <AlertTriangle className="mr-2 h-5 w-5 text-destructive"/>Demitir Funcionário?
+                          </AlertDialogTitle>
+                          <AlertDialogDesc>
+                            Esta ação removerá permanentemente o funcionário "{func.nome}" (que está de férias). Deseja continuar?
+                          </AlertDialogDesc>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(func.id, func.nome)} className="bg-destructive hover:bg-destructive/90">
+                            Sim, Demitir
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+                 <div className="mt-3 pt-2 border-t border-muted-foreground/20">
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">Instruções (Arquivadas):</p>
+                  <p className="text-sm bg-background/50 p-2 rounded-md whitespace-pre-wrap max-h-28 overflow-y-auto text-muted-foreground">
+                    {func.instrucoes}
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {allFuncionarios.length === 0 && (
+         <Card>
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">Nenhum funcionário criado ainda. Comece criando um acima!</p>
+            </CardContent>
+         </Card>
+      )}
+
     </div>
   );
 }
