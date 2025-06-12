@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Clone as CloneIcon } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -215,7 +215,7 @@ export function TrainingClient() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                       disabled={!!editingFuncionario && editingFuncionario.departamento === field.value} // Allow changing if cloning (editingFuncionario is null) or if field hasn't been set yet
+                       disabled={!!editingFuncionario && editingFuncionario.departamento === field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -231,7 +231,7 @@ export function TrainingClient() {
                       </SelectContent>
                     </Select>
                     {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar um funcionário existente, a menos que esteja clonando.</FormDescription>}
-                    {!editingFuncionario && <FormDescription>Se um departamento já tiver um funcionário, ele será substituído.</FormDescription>}
+                    {!editingFuncionario && <FormDescription>Se um departamento já tiver um funcionário ativo, selecionar um novo aqui não o substituirá automaticamente como ativo. Use a seção "Gerenciar Funcionários Ativos" abaixo.</FormDescription>}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -462,5 +462,3 @@ export function TrainingClient() {
     </div>
   );
 }
-
-    
