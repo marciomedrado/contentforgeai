@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { Label } from '@/components/ui/label'; // Added import for standard Label
 import { useToast } from '@/hooks/use-toast';
 import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3 } from 'lucide-react';
 import {
@@ -33,7 +34,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Separator } from '@/components/ui/separator';
 
 const funcionarioFormSchema = z.object({
   nome: z.string().min(3, "O nome do funcionário deve ter pelo menos 3 caracteres."),
@@ -97,14 +97,13 @@ export function TrainingClient() {
       createdAt: editingFuncionario?.createdAt || new Date().toISOString(),
     };
 
-    saveFuncionario(newFuncionario);
+    saveFuncionario(newFuncionario); // This will trigger storage events to update lists
     toast({
       title: editingFuncionario ? "Funcionário Atualizado!" : "Funcionário Criado!",
       description: `O funcionário "${data.nome}" para o departamento de ${DEPARTAMENTOS.find(d => d.value === data.departamento)?.label} foi salvo.`,
     });
     form.reset({ nome: '', instrucoes: '', departamento: undefined });
     setEditingFuncionario(null);
-    // No need to call refreshAllFuncionarios() here as saveFuncionario triggers storage event
   };
 
   const handleEditFuncionario = (funcionario: Funcionario) => {
@@ -130,7 +129,7 @@ export function TrainingClient() {
   };
 
   const handleSetActiveFuncionario = (departamento: Departamento, funcionarioId: string) => {
-    const idToSet = funcionarioId === '' ? null : funcionarioId;
+    const idToSet = funcionarioId === '' ? null : funcionarioId; // '' from Select means "None"
     setActiveFuncionarioForDepartamento(departamento, idToSet);
     // refreshActiveFuncionarios will be called by storage event
     toast({
@@ -150,7 +149,7 @@ export function TrainingClient() {
           <CardDescription>
             {editingFuncionario
               ? `Modifique os detalhes do funcionário "${editingFuncionario.nome}".`
-              : "Crie 'Funcionários' com instruções específicas e atribua-os a 'Departamentos'. Você pode ter múltiplos funcionários por departamento."}
+              : "Crie 'Funcionários' com instruções específicas, atribua-os a 'Departamentos' e depois ative-os abaixo."}
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -178,7 +177,7 @@ export function TrainingClient() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                       disabled={!!editingFuncionario} // Department cannot be changed when editing to maintain integrity
+                       disabled={!!editingFuncionario} 
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -252,7 +251,7 @@ export function TrainingClient() {
                 const funcionariosNesteDepartamento = allFuncionarios.filter(f => f.departamento === dep.value);
                 return (
                     <div key={dep.value} className="space-y-2 p-3 border rounded-md shadow-sm">
-                        <FormLabel className="font-semibold">{dep.label}</FormLabel>
+                        <Label className="font-semibold">{dep.label}</Label>
                         <Select
                             value={activeFuncionarioIds[dep.value] || ""}
                             onValueChange={(funcionarioId) => handleSetActiveFuncionario(dep.value, funcionarioId)}
@@ -262,7 +261,7 @@ export function TrainingClient() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="">Nenhum (Padrão do Sistema)</SelectItem>
-                                {funcionariosNesteDepartamento.length === 0 && <SelectItem value="no-func" disabled>Nenhum funcionário criado para este departamento</SelectItem>}
+                                {funcionariosNesteDepartamento.length === 0 && <SelectItem value="no-func-for-dep" disabled>Nenhum funcionário criado para este departamento</SelectItem>}
                                 {funcionariosNesteDepartamento.map(func => (
                                     <SelectItem key={func.id} value={func.id}>{func.nome}</SelectItem>
                                 ))}
@@ -339,3 +338,4 @@ export function TrainingClient() {
     </div>
   );
 }
+
