@@ -139,7 +139,7 @@ export function SummarizerClient() {
       const updatedItem: SummarizationItem = {
         id: editingSummaryId,
         inputText,
-        summaryOutput,
+        summaryOutput, // This will now include manual edits
         language: outputLanguage,
         createdAt: savedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(), 
       };
@@ -333,11 +333,16 @@ export function SummarizerClient() {
             </CardTitle>
             <CardDescription>Modify the text or language above and click "Re-Summarize" or "Update Saved Summary".</CardDescription>
           </CardHeader>
-          <CardContent>
-             <FormLabel>Current Summary Output</FormLabel>
-            <ScrollArea className="h-[200px] w-full rounded-md border p-4 bg-muted/30">
-              <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{summaryOutput}</ReactMarkdown>
-            </ScrollArea>
+          <CardContent className="space-y-3">
+            <FormLabel htmlFor="currentSummaryOutputTextarea">Current Summary Output</FormLabel>
+            <Textarea
+                id="currentSummaryOutputTextarea"
+                value={summaryOutput}
+                onChange={(e) => setSummaryOutput(e.target.value)}
+                rows={8}
+                className="w-full rounded-md border p-4 bg-muted/30 resize-none"
+                placeholder="Edit summary here..."
+            />
           </CardContent>
             <CardFooter className="flex justify-end">
                  <Button variant="ghost" onClick={() => { 
