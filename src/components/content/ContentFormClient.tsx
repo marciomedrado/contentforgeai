@@ -29,7 +29,6 @@ import {
   getSavedRefinementPrompts,
   addSavedRefinementPrompt,
   deleteSavedRefinementPromptById,
-  // saveStoredRefinementPrompts // Not directly used, but good to be aware it exists
 } from '@/lib/storageService';
 import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -88,7 +87,6 @@ export function ContentFormClient({
   const [generatingImageFor, setGeneratingImageFor] = useState<Record<number, boolean>>({});
   const [generatedImages, setGeneratedImages] = useState<Record<number, string | null>>({});
 
-  // State for refinement modal
   const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
   const [refinementPromptText, setRefinementPromptText] = useState('');
   const [savedRefinementPrompts, setSavedRefinementPrompts] = useState<SavedRefinementPrompt[]>([]);
@@ -197,7 +195,7 @@ export function ContentFormClient({
       toast({ title: "AI Error", description: `Failed to ${isRefinement ? "refine" : "generate"} content. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     if(isRefinement) setIsRefiningContent(false); else setIsLoadingAi(false);
-    if(isRefinement) setIsRefineModalOpen(false); // Close modal after refinement
+    if(isRefinement) setIsRefineModalOpen(false); 
   };
 
   const handleSuggestHashtags = async () => {
@@ -293,14 +291,12 @@ export function ContentFormClient({
       createdAt: new Date().toISOString(),
     };
     addSavedRefinementPrompt(newPrompt);
-    // refreshSavedRefinementPrompts(); // No longer needed here due to storage event listener
     setCurrentRefinementPromptName('');
     toast({ title: "Refinement Prompt Saved!", description: `Prompt "${newPrompt.name}" has been saved.` });
   };
 
   const handleDeleteRefinementPrompt = (id: string) => {
     deleteSavedRefinementPromptById(id);
-    // refreshSavedRefinementPrompts(); // No longer needed here
     toast({ title: "Refinement Prompt Deleted", description: "The saved prompt has been removed." });
   };
   
@@ -468,32 +464,31 @@ export function ContentFormClient({
         </Card>
 
         {generatedContent && (
-          <Card>
+          <Card className="flex flex-col flex-grow min-h-[400px]">
             <CardHeader>
               <CardTitle>Generated Content</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-grow flex flex-col">
               {platformFieldValue === 'Wordpress' ? (
-                <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} />
+                <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} className="flex-grow" />
               ) : (
                 <Textarea
                   value={generatedContent}
                   onChange={(e) => setGeneratedContent(e.target.value)}
-                  rows={15}
                   placeholder="Generated content will appear here..."
-                  className="min-h-[300px]"
+                  className="flex-grow resize-none"
                   suppressHydrationWarning={true}
                 />
               )}
             </CardContent>
-            <CardFooter className="flex justify-start"> {/* Changed from justify-end */}
+            <CardFooter className="flex justify-start">
                  <Dialog open={isRefineModalOpen} onOpenChange={setIsRefineModalOpen}>
                     <DialogTrigger asChild>
                         <Button 
                             type="button" 
                             variant="outline" 
                             disabled={!generatedContent || isLoadingAi || isRefiningContent}
-                            onClick={() => { setIsRefineModalOpen(true); setRefinementPromptText(''); setCurrentRefinementPromptName('');}} // Reset on open
+                            onClick={() => { setIsRefineModalOpen(true); setRefinementPromptText(''); setCurrentRefinementPromptName('');}}
                         >
                             <Wand2 className="mr-2 h-4 w-4" />
                             Refine Content with AI
@@ -524,8 +519,6 @@ export function ContentFormClient({
                                     const selected = savedRefinementPrompts.find(p => p.id === value);
                                     if (selected) {
                                       setRefinementPromptText(selected.promptText);
-                                      // Optionally set name if user wants to resave with same name
-                                      // setCurrentRefinementPromptName(selected.name); 
                                     }
                                 }}
                                 >
@@ -672,3 +665,5 @@ export function ContentFormClient({
     </Form>
   );
 }
+
+    
