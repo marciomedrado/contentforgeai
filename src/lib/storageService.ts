@@ -9,11 +9,14 @@ import {
   REFINEMENT_PROMPTS_STORAGE_KEY,
   FUNCIONARIOS_STORAGE_KEY,
   ACTIVE_FUNCIONARIOS_STORAGE_KEY,
+  DEPARTAMENTOS,
 } from './constants';
 
 // Helper to safely interact with localStorage
 const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
+  if (typeof window === 'undefined') {
+    return defaultValue;
+  }
   try {
     const item = window.localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
@@ -24,7 +27,9 @@ const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
 };
 
 const safeLocalStorageSet = <T>(key: string, value: T): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') {
+    return;
+  }
   try {
     const oldValue = window.localStorage.getItem(key);
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -77,7 +82,7 @@ export const clearAllContentItems = (): void => {
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
     openAIKey: '',
-    openAIAgentId: '', // Added openAIAgentId
+    openAIAgentId: '',
     outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     perplexityApiKey: '',
   };
@@ -239,15 +244,17 @@ export const getFuncionarioById = (id: string): Funcionario | undefined => {
 export const deleteFuncionarioById = (id: string): void => {
   const funcionarios = getFuncionarios();
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.filter(f => f.id !== id));
-  // Also deactivate if this funcionario was active for any department
+  
   const activeFuncionarios = getActiveFuncionariosMap();
   let changed = false;
-  for (const dep in activeFuncionarios) {
-    if (activeFuncionarios[dep as Departamento] === id) {
-      delete activeFuncionarios[dep as Departamento]; // Use delete for object properties
+  
+  DEPARTAMENTOS.forEach(depInfo => {
+    const dep = depInfo.value as Departamento; // Cast to Departamento
+    if (activeFuncionarios[dep] === id) {
+      delete activeFuncionarios[dep]; // Use delete for object properties
       changed = true;
     }
-  }
+  });
   if (changed) {
     saveActiveFuncionariosMap(activeFuncionarios);
   }
@@ -255,16 +262,16 @@ export const deleteFuncionarioById = (id: string): void => {
 
 export const clearAllFuncionarios = (): void => {
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []);
-  safeLocalStorageSet<Record<Departamento, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
+  safeLocalStorageSet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
 };
 
 // Active Funcionarios Management
-const getActiveFuncionariosMap = (): Record<Departamento, string | null> => {
-  return safeLocalStorageGet<Record<Departamento, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
+const getActiveFuncionariosMap = (): Record<string, string | null> => {
+  return safeLocalStorageGet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
 };
 
-const saveActiveFuncionariosMap = (map: Record<Departamento, string | null>): void => {
-  safeLocalStorageSet<Record<Departamento, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, map);
+const saveActiveFuncionariosMap = (map: Record<string, string | null>): void => {
+  safeLocalStorageSet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, map);
 }
 
 export const setActiveFuncionarioForDepartamento = (departamento: Departamento, funcionarioId: string | null): void => {
@@ -295,5 +302,5 @@ export const clearAllData = (): void => {
   clearAllThemeSuggestions();
   clearAllSummaries();
   saveStoredRefinementPrompts([]);
-  clearAllFuncionarios();
+  clearAllFuncionarios(); 
 };

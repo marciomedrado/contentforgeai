@@ -29,7 +29,7 @@ import {
   getSavedRefinementPrompts,
   addSavedRefinementPrompt,
   deleteSavedRefinementPromptById,
-  getActiveFuncionarioForDepartamento, // Updated
+  getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
 import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -44,8 +44,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from '@/components/ui/alert';
-
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert'; // Renamed to avoid conflict
 
 const formSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
@@ -96,8 +95,7 @@ export function ContentFormClient({
   const [isRefiningContent, setIsRefiningContent] = useState(false);
 
   const [contentCreationFuncionario, setContentCreationFuncionario] = useState<Funcionario | null>(null);
-  const [smartHashtagFuncionario, setSmartHashtagFuncionario] = useState<Funcionario | null>(null);
-
+  const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null); // For hashtag suggestions
 
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
@@ -119,13 +117,13 @@ export function ContentFormClient({
   const refreshSettingsAndFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
     setContentCreationFuncionario(getActiveFuncionarioForDepartamento("ContentCreation") || null);
-    setSmartHashtagFuncionario(getActiveFuncionarioForDepartamento("SmartHashtagSuggestions") || null);
+    setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null); // Get ThemePlanner Funcionario
   }, []);
 
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === SETTINGS_STORAGE_KEY || 
-          event.key === FUNCIONARIOS_STORAGE_KEY || 
+      if (event.key === SETTINGS_STORAGE_KEY ||
+          event.key === FUNCIONARIOS_STORAGE_KEY ||
           event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
         refreshSettingsAndFuncionarios();
       }
@@ -225,7 +223,7 @@ export function ContentFormClient({
       const result = await suggestHashtagsFlow({
         text: generatedContent,
         platform: platformFieldValue.toLowerCase() as 'instagram' | 'facebook' | 'general',
-        customInstructions: smartHashtagFuncionario?.instrucoes,
+        customInstructions: themePlannerFuncionario?.instrucoes, // Use ThemePlanner Funcionario instructions
       });
       setSuggestedHashtags(result.hashtags);
       toast({ title: "Hashtags Suggested!", description: "AI has suggested relevant hashtags." });
@@ -345,16 +343,16 @@ export function ContentFormClient({
             {contentCreationFuncionario ? (
                 <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
                   <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
+                  <AlertDesc className="text-blue-700 dark:text-blue-300 text-xs">
                     Usando instruções do funcionário ativo: <span className="font-semibold">{contentCreationFuncionario.nome}</span> para Criação de Conteúdo.
-                  </AlertDescription>
+                  </AlertDesc>
                 </Alert>
               ) : (
                 <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
                  <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                  <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
+                  <AlertDesc className="text-gray-700 dark:text-gray-300 text-xs">
                     Nenhum funcionário ativo para Criação de Conteúdo. Usando prompt padrão.
-                  </AlertDescription>
+                  </AlertDesc>
                 </Alert>
             )}
           </CardHeader>
@@ -735,19 +733,19 @@ export function ContentFormClient({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><Tags className="mr-2 h-5 w-5" /> Hashtags</CardTitle>
-              {smartHashtagFuncionario ? (
+              {themePlannerFuncionario ? (
                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
                   <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <AlertDescription className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de Hashtag usarão instruções do funcionário ativo: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
-                  </AlertDescription>
+                  <AlertDesc className="text-indigo-700 dark:text-indigo-300">
+                    Sugestões de Hashtag usarão instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> (Planejador de Temas).
+                  </AlertDesc>
                 </Alert>
                  ) : (
                 <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600 text-xs">
                   <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                  <AlertDescription className="text-gray-700 dark:text-gray-300">
-                     Nenhum funcionário ativo para Sugestões de Hashtag. Usando prompt padrão.
-                  </AlertDescription>
+                  <AlertDesc className="text-gray-700 dark:text-gray-300">
+                     Nenhum funcionário ativo para Planejador de Temas (usado para Hashtags). Usando prompt padrão.
+                  </AlertDesc>
                 </Alert>
             )}
             </CardHeader>

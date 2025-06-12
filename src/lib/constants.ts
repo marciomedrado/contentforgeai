@@ -42,8 +42,7 @@ export const DEFAULT_OUTPUT_LANGUAGE = 'pt';
 export const DEPARTAMENTOS: { value: Departamento; label: string }[] = [
   { value: "ContentCreation", label: "Criação de Conteúdo" },
   { value: "Summarizer", label: "Sumarizador" },
-  { value: "ThemePlanner", label: "Planejador de Temas" },
-  { value: "SmartHashtagSuggestions", label: "Sugestões de Hashtag/Palavra-chave" },
+  { value: "ThemePlanner", label: "Planejador de Temas (e Sugestões de Palavra-chave/Hashtag)" },
 ];
 
 // Storage Keys
@@ -53,5 +52,5 @@ export const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';
 export const SUMMARIES_STORAGE_KEY = 'contentForgeAi_summaries';
 export const REFINEMENT_PROMPTS_STORAGE_KEY = 'contentForgeAi_refinementPrompts';
 export const FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_funcionarios';
-export const ACTIVE_FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_activeFuncionarios'; // New key
+export const ACTIVE_FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_activeFuncionarios';
 

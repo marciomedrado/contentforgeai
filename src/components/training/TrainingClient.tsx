@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useForm, SubmitHandler, Controller } from 'react-hook-form';
+import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Funcionario, Departamento } from '@/lib/types';
@@ -28,7 +28,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription as AlertDialogDesc,
+  AlertDialogDescription as AlertDialogDesc, // Renamed to avoid conflict
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -38,20 +38,20 @@ import {
 const funcionarioFormSchema = z.object({
   nome: z.string().min(3, "O nome do funcionário deve ter pelo menos 3 caracteres."),
   instrucoes: z.string().min(10, "As instruções devem ter pelo menos 10 caracteres."),
-  departamento: z.enum(["ContentCreation", "Summarizer", "ThemePlanner", "SmartHashtagSuggestions"], {
+  departamento: z.enum(["ContentCreation", "Summarizer", "ThemePlanner"], { // Updated: Removed SmartHashtagSuggestions
     required_error: "Por favor, selecione um departamento.",
   }),
 });
 
 type FuncionarioFormData = z.infer<typeof funcionarioFormSchema>;
 
-const NONE_VALUE_FOR_SELECT = "_NONE_"; // Unique value for "None" option
+const NONE_VALUE_FOR_SELECT = "_NONE_";
 
 export function TrainingClient() {
   const { toast } = useToast();
   const [allFuncionarios, setAllFuncionarios] = useState<Funcionario[]>([]);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
-  const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<Departamento, string | null>>({});
+  const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<string, string | null>>({});
 
   const form = useForm<FuncionarioFormData>({
     resolver: zodResolver(funcionarioFormSchema),
@@ -67,8 +67,8 @@ export function TrainingClient() {
   }, []);
 
   const refreshActiveFuncionarios = useCallback(() => {
-    const activeIds: Record<Departamento, string | null> = {} as Record<Departamento, string | null>;
-    DEPARTAMENTOS.forEach(dep => {
+    const activeIds: Record<string, string | null> = {};
+    DEPARTAMENTOS.forEach(dep => { // DEPARTAMENTOS now only has valid ones
       activeIds[dep.value] = getActiveFuncionarioIdForDepartamento(dep.value);
     });
     setActiveFuncionarioIds(activeIds);
@@ -106,6 +106,7 @@ export function TrainingClient() {
     });
     form.reset({ nome: '', instrucoes: '', departamento: undefined });
     setEditingFuncionario(null);
+    // No need to refreshAllFuncionarios() here as saveFuncionario already triggers storage event.
   };
 
   const handleEditFuncionario = (funcionario: Funcionario) => {
@@ -119,7 +120,7 @@ export function TrainingClient() {
   };
 
   const handleDelete = (id: string, nome: string) => {
-    deleteFuncionarioById(id);
+    deleteFuncionarioById(id); // This will also trigger storage event for FUNCIONARIOS_STORAGE_KEY and ACTIVE_FUNCIONARIOS_STORAGE_KEY if needed
     toast({
       title: "Funcionário Demitido!",
       description: `O funcionário "${nome}" foi removido.`,
@@ -132,7 +133,7 @@ export function TrainingClient() {
 
   const handleSetActiveFuncionario = (departamento: Departamento, funcionarioIdOrSpecialValue: string) => {
     const idToSet = funcionarioIdOrSpecialValue === NONE_VALUE_FOR_SELECT ? null : funcionarioIdOrSpecialValue;
-    setActiveFuncionarioForDepartamento(departamento, idToSet);
+    setActiveFuncionarioForDepartamento(departamento, idToSet); // This will trigger storage event for ACTIVE_FUNCIONARIOS_STORAGE_KEY
     toast({
       title: "Funcionário Ativo Atualizado!",
       description: `Configuração para ${DEPARTAMENTOS.find(d => d.value === departamento)?.label} atualizada.`,
@@ -178,7 +179,7 @@ export function TrainingClient() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                       disabled={!!editingFuncionario}
+                       disabled={!!editingFuncionario} // Keep disabled when editing
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -186,7 +187,7 @@ export function TrainingClient() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {DEPARTAMENTOS.map((dep) => (
+                        {DEPARTAMENTOS.map((dep) => ( // DEPARTAMENTOS is now filtered
                           <SelectItem key={dep.value} value={dep.value}>
                             {dep.label}
                           </SelectItem>
@@ -194,7 +195,6 @@ export function TrainingClient() {
                       </SelectContent>
                     </Select>
                     {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar um funcionário existente.</FormDescription>}
-                    {!editingFuncionario && <FormDescription>Se um departamento já tiver um funcionário, ele será substituído.</FormDescription>}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -249,7 +249,7 @@ export function TrainingClient() {
             </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-            {DEPARTAMENTOS.map(dep => {
+            {DEPARTAMENTOS.map(dep => { // DEPARTAMENTOS is now filtered
                 const funcionariosNesteDepartamento = allFuncionarios.filter(f => f.departamento === dep.value);
                 const currentActiveIdForDep = activeFuncionarioIds[dep.value];
                 return (
@@ -257,7 +257,7 @@ export function TrainingClient() {
                         <Label className="font-semibold">{dep.label}</Label>
                         <Select
                             value={currentActiveIdForDep || NONE_VALUE_FOR_SELECT}
-                            onValueChange={(funcionarioIdOrSpecialValue) => handleSetActiveFuncionario(dep.value, funcionarioIdOrSpecialValue)}
+                            onValueChange={(funcionarioIdOrSpecialValue) => handleSetActiveFuncionario(dep.value as Departamento, funcionarioIdOrSpecialValue)}
                         >
                             <SelectTrigger>
                                 <SelectValue placeholder="Nenhum (Padrão do Sistema)" />

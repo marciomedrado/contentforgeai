@@ -2,7 +2,8 @@
 export type Platform = "Wordpress" | "Instagram" | "Facebook";
 export type ContentStatus = "Draft" | "Scheduled" | "Published";
 
-export type Departamento = "ContentCreation" | "Summarizer" | "ThemePlanner" | "SmartHashtagSuggestions";
+// Updated: Removed "SmartHashtagSuggestions"
+export type Departamento = "ContentCreation" | "Summarizer" | "ThemePlanner";
 
 export interface ManualReferenceItem {
   id: string;

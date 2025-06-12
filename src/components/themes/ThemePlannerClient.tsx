@@ -24,7 +24,7 @@ import {
   deleteManualReferenceFromTheme,
   updateThemeWithSuggestedKeywords,
   deleteKeywordFromTheme,
-  getActiveFuncionarioForDepartamento, // Updated
+  getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
 import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info } from 'lucide-react';
 import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
@@ -52,8 +52,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from '@/components/ui/alert';
-
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert'; // Renamed to avoid conflict
 
 const themePlannerSchema = z.object({
   topic: z.string().min(5, "Topic must be at least 5 characters."),
@@ -89,8 +88,7 @@ export function ThemePlannerClient() {
   const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null);
 
   const [themePlannerFuncionario, setThemePlannerFuncionario] = useState<Funcionario | null>(null);
-  const [smartHashtagFuncionario, setSmartHashtagFuncionario] = useState<Funcionario | null>(null);
-
+  // No need for smartHashtagFuncionario state, as ThemePlanner Funcionario will be used
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -105,7 +103,6 @@ export function ThemePlannerClient() {
   const refreshSettingsAndActiveFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
     setThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner") || null);
-    setSmartHashtagFuncionario(getActiveFuncionarioForDepartamento("SmartHashtagSuggestions") || null);
   }, []);
 
   useEffect(() => {
@@ -114,7 +111,7 @@ export function ThemePlannerClient() {
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === THEMES_STORAGE_KEY) refreshStoredThemes();
-      if (event.key === SETTINGS_STORAGE_KEY || 
+      if (event.key === SETTINGS_STORAGE_KEY ||
           event.key === FUNCIONARIOS_STORAGE_KEY ||
           event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY
           ) {
@@ -131,19 +128,13 @@ export function ThemePlannerClient() {
   });
 
   const onThemeSuggestSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
-    const freshSettings = getStoredSettings(); // Re-fetch settings to ensure latest API key info
-    if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or ensure it's in your .env file.", variant: "destructive" });
-      return;
-    }
-    setCurrentSettings(freshSettings); // Update local state if needed, though active funcionario is main concern
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
     try {
       const result = await suggestThemes({
         topic: data.topic,
         numSuggestions: data.numSuggestions,
-        outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+        outputLanguage: currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         customInstructions: themePlannerFuncionario?.instrucoes,
       });
       setGeneratedThemesList(result.themes);
@@ -197,10 +188,9 @@ export function ThemePlannerClient() {
     refreshStoredThemes();
     toast({ title: "Manual Reference Added", description: "Your reference has been saved."});
     manualRefForm.reset({ title: "", content: ""});
-    // Close dialog explicitly
     const closeButton = document.getElementById(`dialog-close-manual-ref-${currentThemeForManualRef.id}`);
     closeButton?.click();
-    setCurrentThemeForManualRef(null); // Reset after submission
+    setCurrentThemeForManualRef(null);
   };
 
   const handleDeleteManualRef = useCallback((themeId: string, refId: string) => {
@@ -223,17 +213,12 @@ export function ThemePlannerClient() {
   };
 
   const handleSuggestKeywordsForTheme = async (theme: ThemeSuggestion) => {
-    const freshSettings = getStoredSettings();
-     if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or .env.", variant: "destructive" });
-      return;
-    }
     setIsLoadingSuggestedKeywords(theme.id);
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
         platform: 'general',
-        customInstructions: smartHashtagFuncionario?.instrucoes,
+        customInstructions: themePlannerFuncionario?.instrucoes, // Use ThemePlanner Funcionario instructions
       });
       const processedKeywords = result.hashtags.map(kw => kw.startsWith('#') ? kw.substring(1) : kw);
       updateThemeWithSuggestedKeywords(theme.id, processedKeywords);
@@ -279,16 +264,16 @@ export function ThemePlannerClient() {
            {themePlannerFuncionario ? (
             <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
               <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
-                Usando instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> para o Planejador de Temas.
-              </AlertDescription>
+              <AlertDesc className="text-blue-700 dark:text-blue-300 text-xs">
+                Usando instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> para o Planejador de Temas (e sugestões de palavras-chave).
+              </AlertDesc>
             </Alert>
           ) : (
             <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600">
                 <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
+                <AlertDesc className="text-gray-700 dark:text-gray-300 text-xs">
                   Nenhum funcionário ativo para o Planejador de Temas. Usando prompt padrão.
-                </AlertDescription>
+                </AlertDesc>
             </Alert>
           )}
         </CardHeader>
@@ -375,21 +360,15 @@ export function ThemePlannerClient() {
           <CardHeader>
             <CardTitle>Saved Theme Ideas</CardTitle>
             <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content.</CardDescription>
-              {smartHashtagFuncionario ? (
+              {themePlannerFuncionario && ( // Alert for keyword suggestions if ThemePlanner Funcionario is active
                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs">
                   <Info className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <AlertDescription className="text-indigo-700 dark:text-indigo-300">
-                    Sugestões de termos/palavras-chave usarão instruções do funcionário ativo: <span className="font-semibold">{smartHashtagFuncionario.nome}</span>.
-                  </AlertDescription>
+                  <AlertDesc className="text-indigo-700 dark:text-indigo-300">
+                    Sugestões de termos/palavras-chave usarão instruções do funcionário ativo: <span className="font-semibold">{themePlannerFuncionario.nome}</span> (Planejador de Temas).
+                  </AlertDesc>
                 </Alert>
-                ) : (
-                 <Alert variant="default" className="mt-2 bg-gray-50 border-gray-200 dark:bg-gray-700/30 dark:border-gray-600 text-xs">
-                    <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                    <AlertDescription className="text-gray-700 dark:text-gray-300">
-                        Nenhum funcionário ativo para Sugestões de Hashtag/Palavra-chave. Usando prompt padrão.
-                    </AlertDescription>
-                </Alert>
-              )}
+                )
+              }
           </CardHeader>
           <CardContent className="space-y-6">
             {storedThemeSuggestions.map((suggestion) => (
