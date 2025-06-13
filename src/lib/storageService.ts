@@ -111,7 +111,12 @@ export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
   if (!themes.some(t => t.userInputTopic === theme.userInputTopic && t.title === theme.title && t.description === theme.description)) {
-    const themeToSave = { ...theme, suggestedKeywords: theme.suggestedKeywords || [], manualReferences: theme.manualReferences || [] };
+    const themeToSave: ThemeSuggestion = { 
+      ...theme, 
+      suggestedKeywords: theme.suggestedKeywords || [], 
+      manualReferences: theme.manualReferences || [],
+      createdByFuncionarioId: theme.createdByFuncionarioId,
+    };
     saveStoredThemeSuggestions([themeToSave, ...themes]);
   }
 };
@@ -176,12 +181,20 @@ export const saveStoredSummaries = (items: SummarizationItem[]): void => {
 
 export const addSummarizationItem = (item: SummarizationItem): void => {
   const items = getStoredSummaries();
-  saveStoredSummaries([item, ...items]);
+  const itemToSave: SummarizationItem = {
+    ...item,
+    createdByFuncionarioId: item.createdByFuncionarioId,
+  };
+  saveStoredSummaries([itemToSave, ...items]);
 };
 
 export const updateSummarizationItem = (updatedItem: SummarizationItem): void => {
   let items = getStoredSummaries();
-  items = items.map(item => item.id === updatedItem.id ? updatedItem : item);
+  const itemToSave: SummarizationItem = {
+    ...updatedItem,
+    createdByFuncionarioId: updatedItem.createdByFuncionarioId,
+  };
+  items = items.map(item => item.id === itemToSave.id ? itemToSave : item);
   saveStoredSummaries(items);
 };
 
@@ -229,8 +242,10 @@ export const getFuncionariosUnfiltered = (): Funcionario[] => {
 export const getFuncionarios = (activeEmpresaId?: string | null): Funcionario[] => {
   let funcionarios = getFuncionariosUnfiltered();
   if (activeEmpresaId && activeEmpresaId !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
-    funcionarios = funcionarios.filter(f => f.empresaId === activeEmpresaId || !f.empresaId); // Show assigned and "Available"
+    // Filter for funcionarios belonging to the active empresa OR those who are "Available" (no empresaId)
+    funcionarios = funcionarios.filter(f => f.empresaId === activeEmpresaId || !f.empresaId);
   }
+  // If no activeEmpresaId or it's "Visão Geral", all funcionarios are returned by getFuncionariosUnfiltered initially
   return funcionarios;
 };
 
@@ -333,17 +348,26 @@ export const getActiveFuncionarioForDepartamento = (departamento: Departamento, 
   if (!activeFuncIdForDept) return null;
 
   const funcionario = getFuncionarioById(activeFuncIdForDept);
-  if (!funcionario || (funcionario.status !== 'Active' && funcionario.status !== undefined /* allow old items without status */)) {
+  
+  // If no funcionario found by ID, or if funcionario is on vacation, return null
+  if (!funcionario || funcionario.status === 'Vacation') {
+    // If the active Funcionario ID pointed to someone on vacation, clear it for the department
+    if (funcionario && funcionario.status === 'Vacation' && activeMap[departamento] === activeFuncIdForDept) {
+        const activeMap = getActiveFuncionariosMap();
+        activeMap[departamento] = null;
+        saveActiveFuncionariosMap(activeMap);
+    }
     return null;
   }
-
-  // If a global company context is active, the funcionario must match or be "Available"
+  
+  // If a global company context is active (not "Visão Geral")
   if (globalActiveEmpresaId && globalActiveEmpresaId !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+    // Funcionario must belong to the active company OR be "Available" (no empresaId)
     if (funcionario.empresaId && funcionario.empresaId !== globalActiveEmpresaId) {
-      return null; // Funcionario belongs to a different company
+      return null; // Funcionario belongs to a different company, not valid in this context
     }
-    // If funcionario.empresaId is undefined, it's "Available" and can be used.
-    // If funcionario.empresaId === globalActiveEmpresaId, it's a match.
+    // If funcionario.empresaId is undefined, it's "Available" and valid.
+    // If funcionario.empresaId === globalActiveEmpresaId, it's a match and valid.
   }
   // If no global company context (Visão Geral), or if funcionario is "Available" or matches the active company, return it.
   return funcionario;

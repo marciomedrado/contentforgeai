@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { AppSettings, ThemeSuggestion, ManualReferenceItem, Funcionario } from '@/lib/types';
+import type { AppSettings, ThemeSuggestion, ManualReferenceItem, Funcionario, Empresa } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,9 +25,11 @@ import {
   updateThemeWithSuggestedKeywords,
   deleteKeywordFromTheme,
   getActiveFuncionarioForDepartamento,
+  getFuncionariosUnfiltered,
+  getEmpresaById,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info, Copy, BrainCircuit } from 'lucide-react';
-import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info, Copy, BrainCircuit, Building } from 'lucide-react';
+import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY, EMPRESAS_STORAGE_KEY, ACTIVE_EMPRESA_ID_STORAGE_KEY, ALL_EMPRESAS_OR_VISAO_GERAL_VALUE } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label as UiLabel } from "@/components/ui/label";
@@ -53,7 +55,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
-
+import { useActiveEmpresa } from '@/hooks/useActiveEmpresa';
+import Image from 'next/image';
 
 const themePlannerSchema = z.object({
   topic: z.string().min(5, "Topic must be at least 5 characters."),
@@ -80,15 +83,18 @@ export function ThemePlannerClient() {
   const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'| 'suggestedKeywords'>[]>([]);
 
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings());
-  const [storedThemeSuggestions, setStoredThemeSuggestions] = useState<ThemeSuggestion[]>([]);
+  const [allStoredThemeSuggestions, setAllStoredThemeSuggestions] = useState<ThemeSuggestion[]>([]);
   const [currentUserInputTopic, setCurrentUserInputTopic] = useState<string>("");
 
   const [selectedManualReferences, setSelectedManualReferences] = useState<Record<string, Record<string, boolean>>>({});
   const [currentThemeForManualRef, setCurrentThemeForManualRef] = useState<ThemeSuggestion | null>(null);
 
   const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null);
-
   const [activeThemePlannerFuncionarioName, setActiveThemePlannerFuncionarioName] = useState<string | null>(null);
+  
+  const [activeEmpresaIdGlobal, _setActiveEmpresaIdGlobal] = useActiveEmpresa();
+  const [allFuncionarios, setAllFuncionarios] = useState<Funcionario[]>([]);
+  const [currentActiveEmpresaDetails, setCurrentActiveEmpresaDetails] = useState<Empresa | null>(null);
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -97,41 +103,69 @@ export function ThemePlannerClient() {
 
 
   const refreshStoredThemes = useCallback(() => {
-    setStoredThemeSuggestions(getStoredThemeSuggestions());
+    setAllStoredThemeSuggestions(getStoredThemeSuggestions());
   }, []);
 
   const refreshSettingsAndActiveFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
-    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner");
+    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner", activeEmpresaIdGlobal);
     setActiveThemePlannerFuncionarioName(tpFunc ? tpFunc.nome : null);
-  }, []);
+  }, [activeEmpresaIdGlobal]);
+  
+  const refreshAllEmpresaRelatedData = useCallback(() => {
+    setAllFuncionarios(getFuncionariosUnfiltered());
+    if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+      setCurrentActiveEmpresaDetails(getEmpresaById(activeEmpresaIdGlobal));
+    } else {
+      setCurrentActiveEmpresaDetails(null);
+    }
+  }, [activeEmpresaIdGlobal]);
+
 
   useEffect(() => {
     refreshSettingsAndActiveFuncionarios();
     refreshStoredThemes();
+    refreshAllEmpresaRelatedData();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === THEMES_STORAGE_KEY) refreshStoredThemes();
       if (event.key === SETTINGS_STORAGE_KEY ||
           event.key === FUNCIONARIOS_STORAGE_KEY ||
-          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY ||
+          event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY // Listen for global empresa change
           ) {
         refreshSettingsAndActiveFuncionarios();
+      }
+      if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
+        refreshAllEmpresaRelatedData();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshStoredThemes, refreshSettingsAndActiveFuncionarios]);
+  }, [refreshStoredThemes, refreshSettingsAndActiveFuncionarios, refreshAllEmpresaRelatedData]);
 
   const form = useForm<ThemePlannerFormData>({
     resolver: zodResolver(themePlannerSchema),
     defaultValues: { topic: '', numSuggestions: 5 },
   });
+  
+  const filteredThemeSuggestions = useMemo(() => {
+    if (!activeEmpresaIdGlobal || activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+      return allStoredThemeSuggestions;
+    }
+    const funcionariosDaEmpresaAtivaOuDisponiveis = allFuncionarios.filter(
+      func => func.empresaId === activeEmpresaIdGlobal || !func.empresaId
+    ).map(f => f.id);
+
+    return allStoredThemeSuggestions.filter(theme => 
+      theme.createdByFuncionarioId && funcionariosDaEmpresaAtivaOuDisponiveis.includes(theme.createdByFuncionarioId)
+    );
+  }, [allStoredThemeSuggestions, activeEmpresaIdGlobal, allFuncionarios]);
 
   const onThemeSuggestSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
-    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner", activeEmpresaIdGlobal);
     try {
       const result = await suggestThemes({
         topic: data.topic,
@@ -150,6 +184,7 @@ export function ThemePlannerClient() {
   };
 
   const handleSaveTheme = (theme: Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'| 'suggestedKeywords'>) => {
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner", activeEmpresaIdGlobal);
     const newSuggestion: ThemeSuggestion = {
       id: Date.now().toString(),
       userInputTopic: currentUserInputTopic,
@@ -159,17 +194,18 @@ export function ThemePlannerClient() {
       suggestedKeywords: [],
       generatedAt: new Date().toISOString(),
       manualReferences: [],
+      createdByFuncionarioId: activeThemePlannerFuncionario?.id,
     };
     addThemeSuggestion(newSuggestion);
-    refreshStoredThemes();
+    // refreshStoredThemes will be called by storage event
     toast({ title: "Theme Saved!", description: `Theme "${theme.title}" has been saved.` });
   };
 
   const handleDeleteTheme = useCallback((id: string) => {
     deleteThemeSuggestionById(id);
-    refreshStoredThemes();
+    // refreshStoredThemes will be called by storage event
     toast({ title: "Theme Deleted", description: "The theme idea has been removed." });
-  }, [refreshStoredThemes, toast]);
+  }, [toast]);
 
 
   const handleOpenManualRefModal = (theme: ThemeSuggestion) => {
@@ -187,7 +223,7 @@ export function ThemePlannerClient() {
       createdAt: new Date().toISOString(),
     };
     addManualReferenceToTheme(currentThemeForManualRef.id, newManualRef);
-    refreshStoredThemes();
+    // refreshStoredThemes will be called by storage event
     toast({ title: "Manual Reference Added", description: "Your reference has been saved."});
     manualRefForm.reset({ title: "", content: ""});
     const closeButton = document.getElementById(`dialog-close-manual-ref-${currentThemeForManualRef.id}`);
@@ -202,9 +238,9 @@ export function ThemePlannerClient() {
         delete newThemeSelection[refId];
         return { ...prev, [themeId]: newThemeSelection };
     });
-    refreshStoredThemes();
+    // refreshStoredThemes will be called by storage event
     toast({ title: "Manual Reference Deleted", description: "The manual reference has been removed." });
-  }, [refreshStoredThemes, toast]);
+  }, [toast]);
 
   const toggleManualReferenceSelection = (themeId: string, refId: string) => {
     setSelectedManualReferences(prev => {
@@ -216,7 +252,7 @@ export function ThemePlannerClient() {
 
   const handleSuggestKeywordsForTheme = async (theme: ThemeSuggestion) => {
     setIsLoadingSuggestedKeywords(theme.id);
-    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner", activeEmpresaIdGlobal);
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
@@ -225,7 +261,7 @@ export function ThemePlannerClient() {
       });
       const processedKeywords = result.hashtags.map(kw => kw.startsWith('#') ? kw.substring(1) : kw);
       updateThemeWithSuggestedKeywords(theme.id, processedKeywords);
-      refreshStoredThemes();
+      // refreshStoredThemes will be called by storage event
       toast({ title: "Keywords Suggested!", description: "AI has suggested and saved additional keywords/search terms." });
     } catch (error) {
       console.error("Keyword suggestion error:", error);
@@ -236,9 +272,9 @@ export function ThemePlannerClient() {
 
   const handleDeleteSuggestedKeyword = useCallback((themeId: string, keywordToDelete: string) => {
     deleteKeywordFromTheme(themeId, keywordToDelete);
-    refreshStoredThemes();
+    // refreshStoredThemes will be called by storage event
     toast({ title: "Keyword Deleted", description: `Keyword "${keywordToDelete}" has been removed.`});
-  }, [refreshStoredThemes, toast]);
+  }, [toast]);
 
   const handleCopyText = (textToCopy: string, successMessage: string) => {
     if (!textToCopy) {
@@ -274,6 +310,31 @@ export function ThemePlannerClient() {
 
   return (
     <div className="space-y-8">
+      {currentActiveEmpresaDetails && (
+        <Card className="mb-6 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
+          <CardHeader className="flex flex-row items-center gap-4">
+            {currentActiveEmpresaDetails.logoUrl ? (
+              <Image
+                src={currentActiveEmpresaDetails.logoUrl}
+                alt={`Logo ${currentActiveEmpresaDetails.nome}`}
+                width={60}
+                height={60}
+                className="rounded-lg border object-cover"
+                data-ai-hint="logo company"
+                onError={(e) => (e.currentTarget.src = 'https://placehold.co/60x60.png')}
+              />
+            ) : (
+              <div className="p-3 bg-muted rounded-lg">
+                <Building className="h-10 w-10 text-muted-foreground" />
+              </div>
+            )}
+            <div>
+              <CardTitle className="text-2xl text-primary-foreground">{currentActiveEmpresaDetails.nome}</CardTitle>
+              <p className="text-sm text-primary-foreground/80">Planejando temas no contexto desta empresa.</p>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Proactive Theme Planner</CardTitle>
@@ -366,14 +427,14 @@ export function ThemePlannerClient() {
         </Card>
       )}
 
-      {storedThemeSuggestions.length > 0 && (
+      {filteredThemeSuggestions.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Saved Theme Ideas</CardTitle>
             <CardDescription>Manage your saved themes, add manual notes, get keyword ideas, and create content.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {storedThemeSuggestions.map((suggestion) => (
+            {filteredThemeSuggestions.map((suggestion) => (
               <Card key={suggestion.id} className="p-4 shadow-md">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 mr-2">
@@ -550,11 +611,21 @@ export function ThemePlannerClient() {
                 </div>
               </Card>
             ))}
+             {filteredThemeSuggestions.length === 0 && (
+                 <p className="text-muted-foreground text-center py-4">
+                    Nenhuma ideia de tema salva encontrada {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? `para a empresa "${currentActiveEmpresaDetails?.nome}"` : ''}.
+                 </p>
+             )}
           </CardContent>
         </Card>
+      )}
+       {allStoredThemeSuggestions.length === 0 && generatedThemesList.length === 0 && (
+         <Card>
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">Nenhuma ideia de tema sugerida ou salva ainda. Comece usando o formulário acima!</p>
+            </CardContent>
+         </Card>
       )}
     </div>
   );
 }
-
-    

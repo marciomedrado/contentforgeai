@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -23,10 +23,12 @@ import {
   addManualReferenceToTheme,
   getStoredSettings,
   getActiveFuncionarioForDepartamento,
+  getFuncionariosUnfiltered,
+  getEmpresaById,
 } from '@/lib/storageService';
-import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings, Funcionario } from '@/lib/types';
-import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle, Eye, Info, BrainCircuit } from 'lucide-react';
-import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings, Funcionario, Empresa } from '@/lib/types';
+import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle, Eye, Info, BrainCircuit, Building } from 'lucide-react';
+import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY, EMPRESAS_STORAGE_KEY, ACTIVE_EMPRESA_ID_STORAGE_KEY, ALL_EMPRESAS_OR_VISAO_GERAL_VALUE } from '@/lib/constants';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -51,6 +53,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
+import { useActiveEmpresa } from '@/hooks/useActiveEmpresa';
+import Image from 'next/image';
 
 
 const summarizerFormSchema = z.object({
@@ -64,7 +68,7 @@ export function SummarizerClient() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [summaryOutput, setSummaryOutput] = useState('');
-  const [savedSummaries, setSavedSummaries] = useState<SummarizationItem[]>([]);
+  const [allSavedSummaries, setAllSavedSummaries] = useState<SummarizationItem[]>([]);
   const [editingSummaryId, setEditingSummaryId] = useState<string | null>(null);
 
   const [isSendToThemeModalOpen, setIsSendToThemeModalOpen] = useState(false);
@@ -74,8 +78,11 @@ export function SummarizerClient() {
 
   const [isViewContentModalOpen, setIsViewContentModalOpen] = useState(false);
   const [summaryToView, setSummaryToView] = useState<SummarizationItem | null>(null);
-  
   const [activeSummarizerFuncionarioName, setActiveSummarizerFuncionarioName] = useState<string | null>(null);
+
+  const [activeEmpresaIdGlobal, _setActiveEmpresaIdGlobal] = useActiveEmpresa();
+  const [allFuncionarios, setAllFuncionarios] = useState<Funcionario[]>([]);
+  const [currentActiveEmpresaDetails, setCurrentActiveEmpresaDetails] = useState<Empresa | null>(null);
 
   const form = useForm<SummarizerFormData>({
     resolver: zodResolver(summarizerFormSchema),
@@ -86,22 +93,32 @@ export function SummarizerClient() {
   });
 
   const refreshSummaries = useCallback(() => {
-    setSavedSummaries(getStoredSummaries());
+    setAllSavedSummaries(getStoredSummaries());
   }, []);
 
   const refreshSettingsAndActiveFuncionario = useCallback(() => {
     if (typeof window !== 'undefined') {
       const currentSettings = getStoredSettings();
       form.setValue('outputLanguage', currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
-      const summarizerFunc = getActiveFuncionarioForDepartamento("Summarizer");
+      const summarizerFunc = getActiveFuncionarioForDepartamento("Summarizer", activeEmpresaIdGlobal);
       setActiveSummarizerFuncionarioName(summarizerFunc ? summarizerFunc.nome : null);
     }
-  }, [form]);
+  }, [form, activeEmpresaIdGlobal]);
+
+  const refreshAllEmpresaRelatedData = useCallback(() => {
+    setAllFuncionarios(getFuncionariosUnfiltered());
+    if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+      setCurrentActiveEmpresaDetails(getEmpresaById(activeEmpresaIdGlobal));
+    } else {
+      setCurrentActiveEmpresaDetails(null);
+    }
+  }, [activeEmpresaIdGlobal]);
 
 
   useEffect(() => {
     refreshSummaries();
     refreshSettingsAndActiveFuncionario();
+    refreshAllEmpresaRelatedData();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SUMMARIES_STORAGE_KEY) {
@@ -109,18 +126,35 @@ export function SummarizerClient() {
       }
       if (event.key === SETTINGS_STORAGE_KEY || 
           event.key === FUNCIONARIOS_STORAGE_KEY || 
-          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY ||
+          event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) { // Listen for global empresa change
          refreshSettingsAndActiveFuncionario();
+      }
+       if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
+        refreshAllEmpresaRelatedData();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshSummaries, refreshSettingsAndActiveFuncionario]);
+  }, [refreshSummaries, refreshSettingsAndActiveFuncionario, refreshAllEmpresaRelatedData]);
+
+  const filteredSavedSummaries = useMemo(() => {
+    if (!activeEmpresaIdGlobal || activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+      return allSavedSummaries;
+    }
+    const funcionariosDaEmpresaAtivaOuDisponiveis = allFuncionarios.filter(
+      func => func.empresaId === activeEmpresaIdGlobal || !func.empresaId
+    ).map(f => f.id);
+
+    return allSavedSummaries.filter(summary => 
+      summary.createdByFuncionarioId && funcionariosDaEmpresaAtivaOuDisponiveis.includes(summary.createdByFuncionarioId)
+    );
+  }, [allSavedSummaries, activeEmpresaIdGlobal, allFuncionarios]);
 
   const onSummarizeSubmit: SubmitHandler<SummarizerFormData> = async (data) => {
     setIsLoading(true);
     setSummaryOutput('');
-    const activeSummarizerFuncionario = getActiveFuncionarioForDepartamento("Summarizer");
+    const activeSummarizerFuncionario = getActiveFuncionarioForDepartamento("Summarizer", activeEmpresaIdGlobal);
     try {
       const result = await summarizeTextFlow({
         textToSummarize: data.inputText,
@@ -142,6 +176,7 @@ export function SummarizerClient() {
       toast({ title: "No Summary", description: "Generate a summary before saving.", variant: "destructive" });
       return;
     }
+    const activeSummarizerFuncionario = getActiveFuncionarioForDepartamento("Summarizer", activeEmpresaIdGlobal);
 
     if (editingSummaryId) {
       const updatedItem: SummarizationItem = {
@@ -149,7 +184,8 @@ export function SummarizerClient() {
         inputText,
         summaryOutput,
         language: outputLanguage,
-        createdAt: savedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(),
+        createdAt: allSavedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(),
+        createdByFuncionarioId: activeSummarizerFuncionario?.id,
       };
       updateSummarizationItem(updatedItem);
       toast({ title: "Summary Updated!", description: "Your summary has been updated." });
@@ -161,11 +197,12 @@ export function SummarizerClient() {
         summaryOutput,
         language: outputLanguage,
         createdAt: new Date().toISOString(),
+        createdByFuncionarioId: activeSummarizerFuncionario?.id,
       };
       addSummarizationItem(newItem);
       toast({ title: "Summary Saved!", description: "Your summary has been saved." });
     }
-    refreshSummaries();
+    // refreshSummaries will be called by storage event
     form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
     setSummaryOutput('');
   };
@@ -182,7 +219,7 @@ export function SummarizerClient() {
 
   const handleDeleteSummary = (id: string) => {
     deleteSummarizationItemById(id);
-    refreshSummaries();
+    // refreshSummaries will be called by storage event
     if (editingSummaryId === id) {
       setEditingSummaryId(null);
       form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
@@ -205,17 +242,20 @@ export function SummarizerClient() {
   };
 
   const handleClearAll = () => {
-    clearAllSummaries();
-    refreshSummaries();
+    // This should clear only summaries relevant to the current company context if one is active
+    const summariesToDelete = filteredSavedSummaries.map(s => s.id);
+    summariesToDelete.forEach(id => deleteSummarizationItemById(id));
+    // refreshSummaries will be called by storage event
+    
     setEditingSummaryId(null);
     form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
     setSummaryOutput('');
-    toast({ title: "History Cleared", description: "All summaries have been deleted." });
+    toast({ title: "History Cleared", description: `Summaries ${activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? 'for this company ' : ''}have been deleted.` });
   };
 
   const handleOpenSendToThemeModal = (summary: SummarizationItem) => {
     setCurrentSummaryToSend(summary);
-    setAllThemeSuggestions(getStoredThemeSuggestions());
+    setAllThemeSuggestions(getStoredThemeSuggestions()); // Potentially filter these themes too by company context
     setSelectedThemeIdForSummary(null);
     setIsSendToThemeModalOpen(true);
   };
@@ -253,6 +293,31 @@ export function SummarizerClient() {
 
   return (
     <div className="space-y-8">
+       {currentActiveEmpresaDetails && (
+        <Card className="mb-6 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
+          <CardHeader className="flex flex-row items-center gap-4">
+            {currentActiveEmpresaDetails.logoUrl ? (
+              <Image
+                src={currentActiveEmpresaDetails.logoUrl}
+                alt={`Logo ${currentActiveEmpresaDetails.nome}`}
+                width={60}
+                height={60}
+                className="rounded-lg border object-cover"
+                data-ai-hint="logo company"
+                onError={(e) => (e.currentTarget.src = 'https://placehold.co/60x60.png')}
+              />
+            ) : (
+              <div className="p-3 bg-muted rounded-lg">
+                <Building className="h-10 w-10 text-muted-foreground" />
+              </div>
+            )}
+            <div>
+              <CardTitle className="text-2xl text-primary-foreground">{currentActiveEmpresaDetails.nome}</CardTitle>
+              <p className="text-sm text-primary-foreground/80">Sumarizando texto no contexto desta empresa.</p>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Text Summarizer</CardTitle>
@@ -375,12 +440,12 @@ export function SummarizerClient() {
       )}
 
 
-      {savedSummaries.length > 0 && (
+      {filteredSavedSummaries.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Saved Summaries History</CardTitle>
             <div className="flex justify-between items-center">
-              <CardDescription>Manage your previously generated and saved summaries.</CardDescription>
+              <CardDescription>Manage your previously generated and saved summaries{activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? ` for ${currentActiveEmpresaDetails?.nome || 'this company'}` : ''}.</CardDescription>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm">
@@ -391,7 +456,7 @@ export function SummarizerClient() {
                   <AlertDialogHeader>
                     <AlertDialogTitle className="flex items-center"><AlertTriangle className="mr-2 h-5 w-5 text-destructive"/>Are you sure?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will permanently delete all saved summaries. This action cannot be undone.
+                      This will permanently delete all saved summaries {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? ` for ${currentActiveEmpresaDetails?.nome || 'this company'}` : ''}. This action cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -403,7 +468,7 @@ export function SummarizerClient() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {savedSummaries.map((item) => (
+            {filteredSavedSummaries.map((item) => (
               <Card key={item.id} className="p-4 shadow-sm">
                 <div className="mb-2">
                   <p className="text-xs text-muted-foreground">
@@ -455,6 +520,22 @@ export function SummarizerClient() {
           </CardContent>
         </Card>
       )}
+      {allSavedSummaries.length === 0 && (
+        <Card>
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">Nenhum sumário salvo ainda. Comece usando o formulário acima!</p>
+            </CardContent>
+         </Card>
+      )}
+       {filteredSavedSummaries.length === 0 && allSavedSummaries.length > 0 && (
+         <Card>
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">
+                Nenhum sumário salvo encontrado {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? `para a empresa "${currentActiveEmpresaDetails?.nome}"` : ''}.
+              </p>
+            </CardContent>
+         </Card>
+      )}
 
       <Dialog open={isSendToThemeModalOpen} onOpenChange={setIsSendToThemeModalOpen}>
         <DialogContent>
@@ -465,7 +546,7 @@ export function SummarizerClient() {
               {currentSummaryToSend && <p className="text-xs mt-2 italic">Sending summary for: "{currentSummaryToSend.inputText.substring(0,50)}..."</p>}
             </DialogDescription>
           </DialogHeader>
-          {allThemeSuggestions.length > 0 ? (
+          {allThemeSuggestions.length > 0 ? ( // Consider filtering themes by active company too
             <div className="space-y-4 py-2">
               <Label htmlFor="select-theme-for-summary">Select Theme Idea</Label>
               <Select onValueChange={setSelectedThemeIdForSummary} value={selectedThemeIdForSummary || undefined}>
@@ -531,5 +612,3 @@ export function SummarizerClient() {
     </div>
   );
 }
-
-    

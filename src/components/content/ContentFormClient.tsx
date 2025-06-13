@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt, Funcionario } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt, Funcionario, Empresa } from '@/lib/types';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY, EMPRESAS_STORAGE_KEY, ACTIVE_EMPRESA_ID_STORAGE_KEY, ALL_EMPRESAS_OR_VISAO_GERAL_VALUE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,8 +30,9 @@ import {
   addSavedRefinementPrompt,
   deleteSavedRefinementPromptById,
   getActiveFuncionarioForDepartamento,
+  getEmpresaById,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info, BrainCircuit } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info, BrainCircuit, Building } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -45,6 +46,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
+import { useActiveEmpresa } from '@/hooks/useActiveEmpresa';
+import Image from 'next/image';
 
 
 const formSchema = z.object({
@@ -95,8 +98,12 @@ export function ContentFormClient({
   const [currentRefinementPromptName, setCurrentRefinementPromptName] = useState('');
   const [isRefiningContent, setIsRefiningContent] = useState(false);
   
-  const [activeContentCreationFuncionarioName, setActiveContentCreationFuncionarioName] = useState<string | null>(null);
-  const [activeThemePlannerFuncionarioName, setActiveThemePlannerFuncionarioName] = useState<string | null>(null);
+  const [activeContentCreationFuncionario, setActiveContentCreationFuncionario] = useState<Funcionario | null>(null);
+  const [activeThemePlannerFuncionario, setActiveThemePlannerFuncionario] = useState<Funcionario | null>(null);
+  
+  const [activeEmpresaIdGlobal, _setActiveEmpresaIdGlobal] = useActiveEmpresa();
+  const [currentActiveEmpresaDetails, setCurrentActiveEmpresaDetails] = useState<Empresa | null>(null);
+
 
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
@@ -115,27 +122,37 @@ export function ContentFormClient({
     setSavedRefinementPrompts(getSavedRefinementPrompts());
   }, []);
 
-  const refreshActiveFuncionariosNames = useCallback(() => {
-    const ccFunc = getActiveFuncionarioForDepartamento("ContentCreation");
-    setActiveContentCreationFuncionarioName(ccFunc ? ccFunc.nome : null);
-    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner");
-    setActiveThemePlannerFuncionarioName(tpFunc ? tpFunc.nome : null);
-  }, []);
+  const refreshActiveFuncionarios = useCallback(() => {
+    setActiveContentCreationFuncionario(getActiveFuncionarioForDepartamento("ContentCreation", activeEmpresaIdGlobal));
+    setActiveThemePlannerFuncionario(getActiveFuncionarioForDepartamento("ThemePlanner", activeEmpresaIdGlobal));
+  }, [activeEmpresaIdGlobal]);
+  
+  const refreshEmpresaDetails = useCallback(() => {
+     if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+      setCurrentActiveEmpresaDetails(getEmpresaById(activeEmpresaIdGlobal));
+    } else {
+      setCurrentActiveEmpresaDetails(null);
+    }
+  }, [activeEmpresaIdGlobal]);
 
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SETTINGS_STORAGE_KEY) {
         setCurrentSettings(getStoredSettings());
       }
-      if (event.key === FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
-        refreshActiveFuncionariosNames();
+      if (event.key === FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
+        refreshActiveFuncionarios();
       }
       if (event.key === REFINEMENT_PROMPTS_STORAGE_KEY) refreshSavedRefinementPrompts();
+      if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
+        refreshEmpresaDetails();
+      }
     };
     window.addEventListener('storage', handleStorageChange);
     setCurrentSettings(getStoredSettings());
-    refreshActiveFuncionariosNames();
+    refreshActiveFuncionarios();
     refreshSavedRefinementPrompts();
+    refreshEmpresaDetails();
 
     if (contentId) {
       const content = getContentItemById(contentId);
@@ -166,12 +183,11 @@ export function ContentFormClient({
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts, refreshActiveFuncionariosNames]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts, refreshActiveFuncionarios, refreshEmpresaDetails]);
 
 
   const handleGenerateOrRefineContent = async (isRefinement: boolean = false, refinementInstructionsFromModal?: string) => {
     const { platform, topic, wordCount, numberOfImages, title } = form.getValues();
-    const activeContentCreationFuncionario = getActiveFuncionarioForDepartamento("ContentCreation");
 
     if (!isRefinement && !topic) {
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
@@ -222,8 +238,7 @@ export function ContentFormClient({
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
-    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
-
+    
     setIsSuggestingHashtags(true);
     try {
       const result = await suggestHashtagsFlow({
@@ -297,6 +312,7 @@ export function ContentFormClient({
       createdAt: currentCreatedAt,
       updatedAt: new Date().toISOString(),
       manualReferencesUsed: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay.map(text => ({content: text})) : undefined,
+      createdByFuncionarioId: activeContentCreationFuncionario?.id,
     };
 
     if (existingContent && !isPlatformChanged) {
@@ -327,12 +343,14 @@ export function ContentFormClient({
       createdAt: new Date().toISOString(),
     };
     addSavedRefinementPrompt(newPrompt);
+    // refreshSavedRefinementPrompts will be called by storage event
     setCurrentRefinementPromptName('');
     toast({ title: "Refinement Prompt Saved!", description: `Prompt "${newPrompt.name}" has been saved.` });
   };
 
   const handleDeleteRefinementPrompt = (id: string) => {
     deleteSavedRefinementPromptById(id);
+    // refreshSavedRefinementPrompts will be called by storage event
     toast({ title: "Refinement Prompt Deleted", description: "The saved prompt has been removed." });
   };
 
@@ -342,6 +360,31 @@ export function ContentFormClient({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+       {currentActiveEmpresaDetails && (
+        <Card className="mb-6 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
+          <CardHeader className="flex flex-row items-center gap-4">
+            {currentActiveEmpresaDetails.logoUrl ? (
+              <Image
+                src={currentActiveEmpresaDetails.logoUrl}
+                alt={`Logo ${currentActiveEmpresaDetails.nome}`}
+                width={60}
+                height={60}
+                className="rounded-lg border object-cover"
+                data-ai-hint="logo company"
+                onError={(e) => (e.currentTarget.src = 'https://placehold.co/60x60.png')}
+              />
+            ) : (
+              <div className="p-3 bg-muted rounded-lg">
+                <Building className="h-10 w-10 text-muted-foreground" />
+              </div>
+            )}
+            <div>
+              <CardTitle className="text-2xl text-primary-foreground">{currentActiveEmpresaDetails.nome}</CardTitle>
+              <p className="text-sm text-primary-foreground/80">Criando conteúdo no contexto desta empresa.</p>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
         <Card>
           <CardHeader>
             <CardTitle>{contentId ? 'Edit Content' : 'Create New Content'}</CardTitle>
@@ -349,8 +392,8 @@ export function ContentFormClient({
              <Alert variant="default" className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700 text-xs py-2">
                 <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <AlertDesc className="text-blue-700 dark:text-blue-300">
-                  {activeContentCreationFuncionarioName
-                    ? <>Geração de conteúdo usará instruções de: <span className="font-semibold">{activeContentCreationFuncionarioName}</span>.</>
+                  {activeContentCreationFuncionario?.nome
+                    ? <>Geração de conteúdo usará instruções de: <span className="font-semibold">{activeContentCreationFuncionario.nome}</span>.</>
                     : "Nenhum funcionário personalizado ativo para Criação de Conteúdo. Usando prompt padrão do sistema."}
                   {" (Configurado em Treinamento)"}
                 </AlertDesc>
@@ -736,8 +779,8 @@ export function ContentFormClient({
                  <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs py-2">
                     <BrainCircuit className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                     <AlertDesc className="text-indigo-700 dark:text-indigo-300">
-                    {activeThemePlannerFuncionarioName
-                        ? <>Sugestões de Hashtag usarão instruções de: <span className="font-semibold">{activeThemePlannerFuncionarioName}</span>.</>
+                    {activeThemePlannerFuncionario?.nome
+                        ? <>Sugestões de Hashtag usarão instruções de: <span className="font-semibold">{activeThemePlannerFuncionario.nome}</span>.</>
                         : "Nenhum funcionário personalizado ativo para Planejador de Temas. Hashtags usarão prompt padrão."}
                     {" (Configurado em Treinamento)"}
                     </AlertDesc>
@@ -780,5 +823,3 @@ export function ContentFormClient({
     </Form>
   );
 }
-
-    

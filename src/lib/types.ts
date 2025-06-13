@@ -20,6 +20,7 @@ export interface ThemeSuggestion {
   suggestedKeywords?: string[];
   generatedAt: string;
   manualReferences?: ManualReferenceItem[];
+  createdByFuncionarioId?: string;
 }
 
 export interface ContentItem {
@@ -37,6 +38,7 @@ export interface ContentItem {
   updatedAt: string;
   scheduledAt?: string;
   manualReferencesUsed?: Array<{ title?: string; content: string }>;
+  createdByFuncionarioId?: string;
 }
 
 export interface AppSettings {
@@ -52,6 +54,7 @@ export interface SummarizationItem {
   summaryOutput: string;
   language: string;
   createdAt: string; // ISO date string
+  createdByFuncionarioId?: string;
 }
 
 export interface SavedRefinementPrompt {

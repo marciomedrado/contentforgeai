@@ -16,6 +16,7 @@ import {
   setFuncionarioStatus,
   getEmpresas, 
   getEmpresaById,
+  getFuncionariosUnfiltered,
 } from '@/lib/storageService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label as UiLabel } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building2 } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { useActiveEmpresa } from '@/hooks/useActiveEmpresa';
+import Image from 'next/image';
 
 const funcionarioFormSchema = z.object({
   nome: z.string().min(3, "O nome do funcionário deve ter pelo menos 3 caracteres."),
@@ -61,6 +63,7 @@ export function TrainingClient() {
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
   const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<string, string | null>>({});
   const [activeEmpresaIdGlobal, _setActiveEmpresaIdGlobal] = useActiveEmpresa();
+  const [currentActiveEmpresaDetails, setCurrentActiveEmpresaDetails] = useState<Empresa | null>(null);
 
   const form = useForm<FuncionarioFormData>({
     resolver: zodResolver(funcionarioFormSchema),
@@ -77,7 +80,7 @@ export function TrainingClient() {
   }, []);
   
   const refreshAllData = useCallback(() => {
-    setAllFuncionarios(getFuncionarios(activeEmpresaIdGlobal)); // Filter by global active empresa
+    setAllFuncionarios(getFuncionarios(activeEmpresaIdGlobal)); 
     
     const activeIds: Record<string, string | null> = {};
     DEPARTAMENTOS.forEach(dep => {
@@ -86,24 +89,33 @@ export function TrainingClient() {
     setActiveFuncionarioIds(activeIds);
   }, [activeEmpresaIdGlobal]);
 
+  const refreshEmpresaDetails = useCallback(() => {
+     if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+      setCurrentActiveEmpresaDetails(getEmpresaById(activeEmpresaIdGlobal));
+    } else {
+      setCurrentActiveEmpresaDetails(null);
+    }
+  }, [activeEmpresaIdGlobal]);
+
 
   useEffect(() => {
     refreshAllEmpresas();
     refreshAllData();
+    refreshEmpresaDetails();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
         refreshAllData();
       }
-      if (event.key === EMPRESAS_STORAGE_KEY) {
-        refreshAllEmpresas();
+      if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
+        refreshAllEmpresas(); // Refresh all empresas if a company is added/deleted or active one changes
+        refreshEmpresaDetails();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshAllData, refreshAllEmpresas]);
+  }, [refreshAllData, refreshAllEmpresas, refreshEmpresaDetails]);
 
-  // Pre-fill empresaId if a global one is active and not editing
   useEffect(() => {
     if (!editingFuncionario && activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
       form.setValue('empresaId', activeEmpresaIdGlobal);
@@ -115,14 +127,6 @@ export function TrainingClient() {
 
   const onSubmit: SubmitHandler<FuncionarioFormData> = (data) => {
     let effectiveEmpresaId = data.empresaId === SEM_EMPRESA_VALUE ? undefined : data.empresaId;
-
-    if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && !editingFuncionario) {
-        // If creating new and global empresa is active, force assign to it or "Available"
-        if(data.empresaId !== SEM_EMPRESA_VALUE && data.empresaId !== activeEmpresaIdGlobal) {
-            // This case should ideally be prevented by disabling options in Select
-            effectiveEmpresaId = activeEmpresaIdGlobal; 
-        }
-    }
     
     const funcDataForSave: Funcionario = {
       id: editingFuncionario?.id || Date.now().toString(),
@@ -159,7 +163,7 @@ export function TrainingClient() {
     form.reset({
       nome: `${funcionario.nome} (Cópia)`,
       instrucoes: funcionario.instrucoes,
-      departamento: funcionario.departamento, // Keep original department on clone if desired, or undefined to force selection
+      departamento: funcionario.departamento,
       empresaId: funcionario.empresaId || SEM_EMPRESA_VALUE,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -170,7 +174,7 @@ export function TrainingClient() {
   };
 
   const handleDelete = (id: string, nome: string) => {
-    deleteFuncionarioById(id); // This will also trigger refreshAllData via storage event
+    deleteFuncionarioById(id); 
     toast({
       title: "Funcionário Demitido!",
       description: `O funcionário "${nome}" foi removido permanentemente.`,
@@ -183,7 +187,7 @@ export function TrainingClient() {
 
   const handleSetActive = (departamento: Departamento, funcionarioIdOrSpecialValue: string) => {
     const idToSet = funcionarioIdOrSpecialValue === NONE_VALUE_FOR_SELECT ? null : funcionarioIdOrSpecialValue;
-    setActiveFuncionarioForDepartamento(departamento, idToSet); // This will also trigger refreshAllData via storage event
+    setActiveFuncionarioForDepartamento(departamento, idToSet); 
     toast({
       title: "Funcionário Ativo Atualizado!",
       description: `Configuração para ${DEPARTAMENTOS.find(d => d.value === departamento)?.label} atualizada.`,
@@ -191,8 +195,8 @@ export function TrainingClient() {
   };
 
   const handleChangeFuncionarioStatus = (id: string, newStatus: FuncionarioStatus) => {
-    setFuncionarioStatus(id, newStatus); // This will also trigger refreshAllData via storage event
-    const funcionario = allFuncionarios.find(f => f.id === id);
+    setFuncionarioStatus(id, newStatus); 
+    const funcionario = allFuncionarios.find(f => f.id === id) || getFuncionariosUnfiltered().find(f => f.id === id);
     toast({
       title: `Status Alterado!`,
       description: `Funcionário "${funcionario?.nome}" agora está ${newStatus === 'Vacation' ? 'de Férias' : 'Ativo'}.`,
@@ -206,27 +210,58 @@ export function TrainingClient() {
   };
   
   const funcionariosDisponiveisParaDepartamento = useCallback((departamento: Departamento) => {
-      return allFuncionarios.filter(f => 
+      // Use getFuncionariosUnfiltered here to ensure all potential employees are considered for the dropdown,
+      // then filter based on department and status, and finally by active company context.
+      let funcs = getFuncionariosUnfiltered().filter(f => 
           f.departamento === departamento && 
-          (f.status === 'Active' || !f.status) &&
-          (!activeEmpresaIdGlobal || activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE || !f.empresaId || f.empresaId === activeEmpresaIdGlobal)
+          (f.status === 'Active' || !f.status) 
       );
-  }, [allFuncionarios, activeEmpresaIdGlobal]);
+
+      if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
+          funcs = funcs.filter(f => !f.empresaId || f.empresaId === activeEmpresaIdGlobal);
+      }
+      return funcs;
+  }, [activeEmpresaIdGlobal]);
 
 
   const activeAndEditableFuncionarios = useMemo(
-    () => allFuncionarios.filter(f => f.status === 'Active' || !f.status),
+    () => allFuncionarios.filter(f => f.status === 'Active' || !f.status), // allFuncionarios is already filtered by activeEmpresa
     [allFuncionarios]
   );
 
   const vacationingFuncionarios = useMemo(
-    () => allFuncionarios.filter(f => f.status === 'Vacation'),
+    () => allFuncionarios.filter(f => f.status === 'Vacation'), // allFuncionarios is already filtered by activeEmpresa
     [allFuncionarios]
   );
 
 
   return (
     <div className="space-y-8">
+      {currentActiveEmpresaDetails && (
+        <Card className="mb-6 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
+          <CardHeader className="flex flex-row items-center gap-4">
+            {currentActiveEmpresaDetails.logoUrl ? (
+              <Image
+                src={currentActiveEmpresaDetails.logoUrl}
+                alt={`Logo ${currentActiveEmpresaDetails.nome}`}
+                width={60}
+                height={60}
+                className="rounded-lg border object-cover"
+                data-ai-hint="logo company"
+                onError={(e) => (e.currentTarget.src = 'https://placehold.co/60x60.png')}
+              />
+            ) : (
+              <div className="p-3 bg-muted rounded-lg">
+                <Building className="h-10 w-10 text-muted-foreground" />
+              </div>
+            )}
+            <div>
+              <CardTitle className="text-2xl text-primary-foreground">{currentActiveEmpresaDetails.nome}</CardTitle>
+              <p className="text-sm text-primary-foreground/80">Treinando funcionários no contexto desta empresa.</p>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -237,9 +272,6 @@ export function TrainingClient() {
             {editingFuncionario
               ? `Modifique os detalhes do funcionário "${editingFuncionario.nome}".`
               : "Crie 'Funcionários' com instruções específicas, atribua-os a 'Departamentos' e, opcionalmente, a 'Empresas'."}
-             {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && (
-                <Badge variant="secondary" className="mt-2">Contexto da Empresa: {getEmpresaById(activeEmpresaIdGlobal)?.nome || 'N/A'}</Badge>
-            )}
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -268,7 +300,7 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={!!editingFuncionario} // Department cannot be changed when editing
+                        disabled={!!editingFuncionario} 
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -297,7 +329,6 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value || SEM_EMPRESA_VALUE}
-                        disabled={!!editingFuncionario && !!activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && field.value !== activeEmpresaIdGlobal && field.value !== SEM_EMPRESA_VALUE}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -306,8 +337,12 @@ export function TrainingClient() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value={SEM_EMPRESA_VALUE}>Disponível (Sem Empresa)</SelectItem>
-                          {allEmpresas.filter(emp => !activeEmpresaIdGlobal || activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE || emp.id === activeEmpresaIdGlobal).map((emp) => (
-                            <SelectItem key={emp.id} value={emp.id}>
+                          {allEmpresas.map((emp) => (
+                            <SelectItem 
+                              key={emp.id} 
+                              value={emp.id}
+                              disabled={!!activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && emp.id !== activeEmpresaIdGlobal}
+                            >
                               {emp.nome}
                             </SelectItem>
                           ))}
@@ -315,7 +350,7 @@ export function TrainingClient() {
                         </SelectContent>
                       </Select>
                       {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && !editingFuncionario &&
-                        <FormDescription>Contexto global da empresa definido. Funcionário será associado a "{getEmpresaById(activeEmpresaIdGlobal)?.nome}" ou "Disponível".</FormDescription>
+                        <FormDescription>Contexto global: {getEmpresaById(activeEmpresaIdGlobal)?.nome}.</FormDescription>
                       }
                       <FormMessage />
                     </FormItem>
@@ -370,8 +405,8 @@ export function TrainingClient() {
             <CardDescription>
                 Selecione qual funcionário (ativo e não em férias) deve estar ativo para cada departamento, respeitando o contexto da empresa globalmente ativa (se houver).
             </CardDescription>
-             {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && (
-                <Badge variant="outline" className="mt-2">Visão para Empresa: {getEmpresaById(activeEmpresaIdGlobal)?.nome || 'N/A'}</Badge>
+             {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && currentActiveEmpresaDetails && (
+                <Badge variant="outline" className="mt-2">Contexto da Empresa: {currentActiveEmpresaDetails.nome}</Badge>
             )}
         </CardHeader>
         <CardContent className="space-y-6">
@@ -390,7 +425,7 @@ export function TrainingClient() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE_VALUE_FOR_SELECT}>Nenhum (Padrão do Sistema)</SelectItem>
-                                {deptFuncionarios.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário compatível para este departamento {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? `na empresa ${getEmpresaById(activeEmpresaIdGlobal)?.nome}` : ''}</SelectItem>}
+                                {deptFuncionarios.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário compatível para este dep. {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && currentActiveEmpresaDetails ? `na empresa ${currentActiveEmpresaDetails.nome}` : ''}</SelectItem>}
                                 {deptFuncionarios.map(func => (
                                     <SelectItem key={func.id} value={func.id}>
                                       {func.nome} ({getEmpresaNome(func.empresaId)})
@@ -409,7 +444,7 @@ export function TrainingClient() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Users className="mr-2 h-6 w-6 text-primary" />
-              Quadro de Funcionários ({activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? `Empresa: ${getEmpresaById(activeEmpresaIdGlobal)?.nome}` : 'Visão Geral'})
+              Quadro de Funcionários {currentActiveEmpresaDetails ? `(Empresa: ${currentActiveEmpresaDetails.nome})` : (activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE || !activeEmpresaIdGlobal ? '(Visão Geral / Todos)' : '')}
             </CardTitle>
             <CardDescription>Gerencie os funcionários. Você pode editá-los, cloná-los, colocá-los de férias ou demiti-los.</CardDescription>
           </CardHeader>
@@ -483,7 +518,7 @@ export function TrainingClient() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Briefcase className="mr-2 h-6 w-6 text-muted-foreground" />
-              Funcionários em Férias ({activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? `Empresa: ${getEmpresaById(activeEmpresaIdGlobal)?.nome}` : 'Visão Geral'})
+              Funcionários em Férias {currentActiveEmpresaDetails ? `(Empresa: ${currentActiveEmpresaDetails.nome})` : (activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE || !activeEmpresaIdGlobal ? '(Visão Geral / Todos)' : '')}
             </CardTitle>
             <CardDescription>Funcionários que estão de férias. Você pode reativá-los, cloná-los ou demiti-los.</CardDescription>
           </CardHeader>
@@ -549,10 +584,10 @@ export function TrainingClient() {
         </Card>
       )}
 
-      {allFuncionarios.length === 0 && (
+      {allFuncionarios.length === 0 && ( // This reflects the already filtered list by activeEmpresaIdGlobal
          <Card>
             <CardContent className="pt-6">
-              <p className="text-muted-foreground text-center">Nenhum funcionário para exibir {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE ? `na empresa "${getEmpresaById(activeEmpresaIdGlobal)?.nome}"` : ''}. Crie um novo funcionário acima.</p>
+              <p className="text-muted-foreground text-center">Nenhum funcionário para exibir {currentActiveEmpresaDetails ? `na empresa "${currentActiveEmpresaDetails.nome}"` : (activeEmpresaIdGlobal === ALL_EMPRESAS_OR_VISAO_GERAL_VALUE || !activeEmpresaIdGlobal ? '' : 'nesta empresa')}. Crie um novo funcionário acima ou altere o filtro de empresa no cabeçalho.</p>
             </CardContent>
          </Card>
       )}
