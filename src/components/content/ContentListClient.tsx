@@ -22,13 +22,13 @@ import {
   saveStoredSettings,
   saveActiveFuncionariosMap,
   setActiveEmpresaId,
-  saveFuncionariosList, // Need a way to save the whole list
-  saveEmpresasList, // Need a way to save the whole list
+  saveFuncionariosList, 
+  saveEmpresasList, 
 } from '@/lib/storageService';
 import { ContentCard } from './ContentCard';
 import { ContentFilters, type ContentFiltersState } from './ContentFilters';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import Image from 'next/image';
 import { Bot, Building, Loader2, Download, Upload, AlertTriangleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -143,7 +143,7 @@ export function ContentListClient() {
 
       itemsToFilter = itemsToFilter.filter(item =>
         (item.createdByFuncionarioId && funcionariosDaEmpresa.includes(item.createdByFuncionarioId)) ||
-        (!item.createdByFuncionarioId && !filters.empresaId)
+        (!item.createdByFuncionarioId && !filters.empresaId) 
       );
     }
 
