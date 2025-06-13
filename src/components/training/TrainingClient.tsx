@@ -5,8 +5,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Funcionario, Departamento, FuncionarioStatus } from '@/lib/types';
-import { DEPARTAMENTOS, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
+import type { Funcionario, Departamento, FuncionarioStatus, Empresa } from '@/lib/types';
+import { DEPARTAMENTOS, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY, EMPRESAS_STORAGE_KEY } from '@/lib/constants';
 import {
   getFuncionarios,
   saveFuncionario,
@@ -14,6 +14,8 @@ import {
   setActiveFuncionarioForDepartamento,
   getActiveFuncionarioIdForDepartamento,
   setFuncionarioStatus,
+  getEmpresas, 
+  getEmpresaById,
 } from '@/lib/storageService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,9 +23,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
-import { Label } from '@/components/ui/label';
+import { Label as UiLabel } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,15 +45,18 @@ const funcionarioFormSchema = z.object({
   departamento: z.enum(["ContentCreation", "Summarizer", "ThemePlanner"], {
     required_error: "Por favor, selecione um departamento.",
   }),
+  empresaId: z.string().optional(),
 });
 
 type FuncionarioFormData = z.infer<typeof funcionarioFormSchema>;
 
 const NONE_VALUE_FOR_SELECT = "_NONE_";
+const SEM_EMPRESA_VALUE = "_SEM_EMPRESA_";
 
 export function TrainingClient() {
   const { toast } = useToast();
   const [allFuncionarios, setAllFuncionarios] = useState<Funcionario[]>([]);
+  const [allEmpresas, setAllEmpresas] = useState<Empresa[]>([]);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
   const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<string, string | null>>({});
 
@@ -61,11 +66,16 @@ export function TrainingClient() {
       nome: '',
       instrucoes: '',
       departamento: undefined,
+      empresaId: SEM_EMPRESA_VALUE,
     },
   });
 
   const refreshAllFuncionarios = useCallback(() => {
     setAllFuncionarios(getFuncionarios());
+  }, []);
+
+  const refreshAllEmpresas = useCallback(() => {
+    setAllEmpresas(getEmpresas());
   }, []);
 
   const refreshActiveFuncionarios = useCallback(() => {
@@ -78,37 +88,42 @@ export function TrainingClient() {
 
   useEffect(() => {
     refreshAllFuncionarios();
+    refreshAllEmpresas();
     refreshActiveFuncionarios();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === FUNCIONARIOS_STORAGE_KEY) {
         refreshAllFuncionarios();
-        refreshActiveFuncionarios();
+        refreshActiveFuncionarios(); // Active might change if a func is deleted
       }
       if (event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
         refreshActiveFuncionarios();
       }
+      if (event.key === EMPRESAS_STORAGE_KEY) {
+        refreshAllEmpresas();
+      }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshAllFuncionarios, refreshActiveFuncionarios]);
+  }, [refreshAllFuncionarios, refreshAllEmpresas, refreshActiveFuncionarios]);
 
   const onSubmit: SubmitHandler<FuncionarioFormData> = (data) => {
-    const newFuncionario: Funcionario = {
+    const funcDataForSave: Funcionario = {
       id: editingFuncionario?.id || Date.now().toString(),
       nome: data.nome,
       instrucoes: data.instrucoes,
       departamento: data.departamento as Departamento,
+      empresaId: data.empresaId === SEM_EMPRESA_VALUE ? undefined : data.empresaId,
       createdAt: editingFuncionario?.createdAt || new Date().toISOString(),
       status: editingFuncionario?.status || 'Active',
     };
 
-    saveFuncionario(newFuncionario);
+    saveFuncionario(funcDataForSave);
     toast({
       title: editingFuncionario ? "Funcionário Atualizado!" : "Funcionário Criado!",
-      description: `O funcionário "${data.nome}" para o departamento de ${DEPARTAMENTOS.find(d => d.value === data.departamento)?.label} foi salvo.`,
+      description: `O funcionário "${data.nome}" foi salvo.`,
     });
-    form.reset({ nome: '', instrucoes: '', departamento: undefined });
+    form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: SEM_EMPRESA_VALUE });
     setEditingFuncionario(null);
   };
 
@@ -118,16 +133,18 @@ export function TrainingClient() {
       nome: funcionario.nome,
       instrucoes: funcionario.instrucoes,
       departamento: funcionario.departamento,
+      empresaId: funcionario.empresaId || SEM_EMPRESA_VALUE,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCloneFuncionario = (funcionario: Funcionario) => {
-    setEditingFuncionario(null); // Ensure we are creating a new one
+    setEditingFuncionario(null); 
     form.reset({
       nome: `${funcionario.nome} (Cópia)`,
       instrucoes: funcionario.instrucoes,
-      departamento: undefined, // Force user to select a department for the clone
+      departamento: undefined, 
+      empresaId: funcionario.empresaId || SEM_EMPRESA_VALUE,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast({
@@ -143,7 +160,7 @@ export function TrainingClient() {
       description: `O funcionário "${nome}" foi removido permanentemente.`,
     });
     if (editingFuncionario?.id === id) {
-        form.reset({ nome: '', instrucoes: '', departamento: undefined });
+        form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: SEM_EMPRESA_VALUE });
         setEditingFuncionario(null);
     }
   };
@@ -166,6 +183,12 @@ export function TrainingClient() {
     });
   };
 
+  const getEmpresaNome = (empresaId?: string): string => {
+    if (!empresaId) return "Disponível (Sem Empresa)";
+    const empresa = allEmpresas.find(e => e.id === empresaId);
+    return empresa ? empresa.nome : "Empresa Desconhecida";
+  };
+
   const activeAndEditableFuncionarios = useMemo(
     () => allFuncionarios.filter(f => f.status === 'Active' || !f.status),
     [allFuncionarios]
@@ -175,6 +198,7 @@ export function TrainingClient() {
     () => allFuncionarios.filter(f => f.status === 'Vacation'),
     [allFuncionarios]
   );
+
 
   return (
     <div className="space-y-8">
@@ -187,7 +211,7 @@ export function TrainingClient() {
           <CardDescription>
             {editingFuncionario
               ? `Modifique os detalhes do funcionário "${editingFuncionario.nome}".`
-              : "Crie 'Funcionários' com instruções específicas, atribua-os a 'Departamentos'."}
+              : "Crie 'Funcionários' com instruções específicas, atribua-os a 'Departamentos' e, opcionalmente, a 'Empresas'."}
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -206,36 +230,66 @@ export function TrainingClient() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="departamento"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Departamento</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                       disabled={!!editingFuncionario && editingFuncionario.departamento === field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o departamento de atuação" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {DEPARTAMENTOS.map((dep) => (
-                          <SelectItem key={dep.value} value={dep.value}>
-                            {dep.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar um funcionário existente, a menos que esteja clonando.</FormDescription>}
-                    {!editingFuncionario && <FormDescription>Se um departamento já tiver um funcionário ativo, selecionar um novo aqui não o substituirá automaticamente como ativo. Use a seção "Gerenciar Funcionários Ativos" abaixo.</FormDescription>}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="departamento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Departamento</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={!!editingFuncionario && editingFuncionario.departamento === field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o departamento" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {DEPARTAMENTOS.map((dep) => (
+                            <SelectItem key={dep.value} value={dep.value}>
+                              {dep.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                       {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar.</FormDescription>}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="empresaId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Empresa (Opcional)</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || SEM_EMPRESA_VALUE}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione uma empresa" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={SEM_EMPRESA_VALUE}>Disponível (Sem Empresa)</SelectItem>
+                          {allEmpresas.length === 0 && <SelectItem value="no-empresa" disabled>Nenhuma empresa cadastrada</SelectItem>}
+                          {allEmpresas.map((emp) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <FormField
                 control={form.control}
                 name="instrucoes"
@@ -250,7 +304,7 @@ export function TrainingClient() {
                       />
                     </FormControl>
                     <FormDescription>
-                      Estas instruções serão usadas pela IA quando este funcionário estiver ativo para o departamento selecionado.
+                      Estas instruções serão usadas pela IA quando este funcionário estiver ativo.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -265,7 +319,7 @@ export function TrainingClient() {
               {editingFuncionario && (
                 <Button type="button" variant="outline" onClick={() => {
                   setEditingFuncionario(null);
-                  form.reset({ nome: '', instrucoes: '', departamento: undefined });
+                  form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: SEM_EMPRESA_VALUE });
                 }}>
                   Cancelar Edição
                 </Button>
@@ -282,16 +336,18 @@ export function TrainingClient() {
                 Gerenciar Funcionários Ativos por Departamento
             </CardTitle>
             <CardDescription>
-                Selecione qual funcionário (ativo) deve estar ativo para cada departamento. As instruções do funcionário ativo serão usadas.
+                Selecione qual funcionário (ativo e não em férias) deve estar ativo para cada departamento.
             </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
             {DEPARTAMENTOS.map(dep => {
-                const funcionariosNesteDepartamentoAtivos = allFuncionarios.filter(f => f.departamento === dep.value && (f.status === 'Active' || !f.status));
+                const funcionariosDisponiveisParaDepartamento = allFuncionarios.filter(
+                    f => f.departamento === dep.value && (f.status === 'Active' || !f.status)
+                );
                 const currentActiveIdForDep = activeFuncionarioIds[dep.value];
                 return (
                     <div key={dep.value} className="space-y-2 p-3 border rounded-md shadow-sm">
-                        <Label className="font-semibold">{dep.label}</Label>
+                        <UiLabel className="font-semibold">{dep.label}</UiLabel>
                         <Select
                             value={currentActiveIdForDep || NONE_VALUE_FOR_SELECT}
                             onValueChange={(funcionarioIdOrSpecialValue) => handleSetActive(dep.value as Departamento, funcionarioIdOrSpecialValue)}
@@ -301,9 +357,11 @@ export function TrainingClient() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE_VALUE_FOR_SELECT}>Nenhum (Padrão do Sistema)</SelectItem>
-                                {funcionariosNesteDepartamentoAtivos.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário ativo criado para este departamento</SelectItem>}
-                                {funcionariosNesteDepartamentoAtivos.map(func => (
-                                    <SelectItem key={func.id} value={func.id}>{func.nome}</SelectItem>
+                                {funcionariosDisponiveisParaDepartamento.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário ativo/disponível para este departamento</SelectItem>}
+                                {funcionariosDisponiveisParaDepartamento.map(func => (
+                                    <SelectItem key={func.id} value={func.id}>
+                                      {func.nome} ({getEmpresaNome(func.empresaId)})
+                                    </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -318,9 +376,9 @@ export function TrainingClient() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Users className="mr-2 h-6 w-6 text-primary" />
-              Quadro de Funcionários Ativos
+              Quadro de Funcionários (Ativos/Disponíveis)
             </CardTitle>
-            <CardDescription>Gerencie os funcionários atualmente ativos. Você pode editá-los, cloná-los, colocá-los de férias ou demiti-los.</CardDescription>
+            <CardDescription>Gerencie os funcionários. Você pode editá-los, cloná-los, colocá-los de férias ou demiti-los.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {activeAndEditableFuncionarios.map((func) => (
@@ -330,6 +388,9 @@ export function TrainingClient() {
                     <h3 className="text-lg font-semibold">{func.nome}</h3>
                     <p className="text-sm text-muted-foreground">
                       Departamento: <span className="font-medium text-primary">{DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}</span>
+                    </p>
+                     <p className="text-sm text-muted-foreground">
+                      Empresa: <span className="font-medium text-accent">{getEmpresaNome(func.empresaId)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Criado em: {new Date(func.createdAt).toLocaleDateString()}</p>
                     <Badge variant={func.status === 'Vacation' ? 'outline' : 'secondary'} className="mt-1">
@@ -401,6 +462,9 @@ export function TrainingClient() {
                     <h3 className="text-lg font-semibold text-muted-foreground">{func.nome}</h3>
                     <p className="text-sm text-muted-foreground">
                       Departamento: {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}
+                    </p>
+                     <p className="text-sm text-muted-foreground">
+                      Empresa: <span className="font-medium">{getEmpresaNome(func.empresaId)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Em férias desde: {new Date(func.createdAt).toLocaleDateString()}</p>
                      <Badge variant={'outline'} className="mt-1 text-muted-foreground border-muted-foreground/50">

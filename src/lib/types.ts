@@ -12,7 +12,7 @@ export interface ManualReferenceItem {
 }
 
 export interface ThemeSuggestion {
-  id: string;
+  id:string;
   userInputTopic: string;
   title: string;
   description: string;
@@ -63,11 +63,19 @@ export interface SavedRefinementPrompt {
 
 export type FuncionarioStatus = 'Active' | 'Vacation';
 
+export interface Empresa {
+  id: string;
+  nome: string;
+  logoUrl?: string;
+  createdAt: string; // ISO date string
+}
+
 export interface Funcionario {
   id: string;
   nome: string;
   instrucoes: string;
   departamento: Departamento;
+  empresaId?: string; // ID da empresa à qual o funcionário está associado
   createdAt: string; // ISO date string
   status?: FuncionarioStatus;
 }
