@@ -18,7 +18,7 @@ import {
   FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE
 } from '@/lib/constants';
 import {
-  getFuncionariosUnfiltered,
+  getFuncionariosUnfiltered, 
   saveFuncionario,
   deleteFuncionarioById,
   setActiveFuncionarioForDepartamento,
@@ -73,7 +73,7 @@ export function TrainingClient() {
   const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<string, string | null>>({});
   const [activeEmpresaIdGlobal, _setActiveEmpresaIdGlobal] = useActiveEmpresa();
   const [currentActiveEmpresaDetails, setCurrentActiveEmpresaDetails] = useState<Empresa | null>(null);
-  const [funcionarioListFilter, setFuncionarioListFilter] = useState<string>('');
+  const [funcionarioListFilter, setFuncionarioListFilter] = useState<string>(FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE);
 
 
   const form = useForm<FuncionarioFormData>({
@@ -115,7 +115,7 @@ export function TrainingClient() {
         refreshAllData();
       }
       if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
-        refreshAllData();
+        refreshAllData(); // Refresh all because funcionarios might change company or availability
         refreshEmpresaDetails();
       }
     };
@@ -124,9 +124,10 @@ export function TrainingClient() {
   }, [refreshAllData, refreshEmpresaDetails]);
 
   useEffect(() => {
+    // Set initial filter based on global company context
     if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
       setFuncionarioListFilter(FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE);
-      if (!editingFuncionario) {
+      if (!editingFuncionario) { // Only set default empresaId if not editing
         form.setValue('empresaId', activeEmpresaIdGlobal);
       }
     } else {
@@ -156,8 +157,8 @@ export function TrainingClient() {
       title: editingFuncionario ? "Funcionário Atualizado!" : "Funcionário Criado!",
       description: `O funcionário "${data.nome}" foi salvo.`,
     });
-    const defaultEmpresaId = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
-    form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaId });
+    const defaultEmpresaIdForReset = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
+    form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset });
     setEditingFuncionario(null);
   };
 
@@ -194,8 +195,8 @@ export function TrainingClient() {
       description: `O funcionário "${nome}" foi removido permanentemente.`,
     });
     if (editingFuncionario?.id === id) {
-        const defaultEmpresaId = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
-        form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaId });
+        const defaultEmpresaIdForReset = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
+        form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset });
         setEditingFuncionario(null);
     }
   };
@@ -203,6 +204,7 @@ export function TrainingClient() {
   const handleSetActive = (departamento: Departamento, funcionarioIdOrSpecialValue: string) => {
     const idToSet = funcionarioIdOrSpecialValue === NONE_VALUE_FOR_SELECT ? null : funcionarioIdOrSpecialValue;
     setActiveFuncionarioForDepartamento(departamento, idToSet); 
+    // Refresh is handled by storage event now
     toast({
       title: "Funcionário Ativo Atualizado!",
       description: `Configuração para ${DEPARTAMENTOS.find(d => d.value === departamento)?.label} atualizada.`,
@@ -227,9 +229,10 @@ export function TrainingClient() {
   const funcionariosDisponiveisParaDepartamento = useCallback((departamento: Departamento) => {
       let funcs = getFuncionariosUnfiltered().filter(f => 
           f.departamento === departamento && 
-          (f.status === 'Active' || !f.status) 
+          (f.status === 'Active' || !f.status) // Only active (or default status) funcionarios
       );
 
+      // If a global company context is active, filter by that company or "Available"
       if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
           funcs = funcs.filter(f => !f.empresaId || f.empresaId === activeEmpresaIdGlobal);
       }
@@ -251,21 +254,27 @@ export function TrainingClient() {
     if (empresa) {
       return `Empresa: ${empresa.nome}`;
     }
-    return "Visão Geral (Todas e Disponíveis)";
+    // Fallback if currentActiveEmpresaDetails is not yet loaded for FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE
+    if (funcionarioListFilter === FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE) {
+        return "Empresa Atual e Disponíveis";
+    }
+    return "Visão Geral (Todas e Disponíveis)"; // Default or fallback
   }, [funcionarioListFilter, currentActiveEmpresaDetails, allEmpresas]);
 
 
   const filteredFuncionarios = useMemo(() => {
     return allFuncionariosUnfilteredStorage.filter(f => {
       if (funcionarioListFilter === FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE) {
-        return (activeEmpresaIdGlobal && f.empresaId === activeEmpresaIdGlobal) || !f.empresaId;
+        // Requires activeEmpresaIdGlobal to be set
+        return (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && f.empresaId === activeEmpresaIdGlobal) || !f.empresaId;
       }
       if (funcionarioListFilter === FUNCIONARIO_FILTER_AVAILABLE_ONLY) {
         return !f.empresaId;
       }
       if (funcionarioListFilter === FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE) {
-        return true;
+        return true; // Show all
       }
+      // This means funcionarioListFilter is an empresaId
       return f.empresaId === funcionarioListFilter;
     });
   }, [allFuncionariosUnfilteredStorage, funcionarioListFilter, activeEmpresaIdGlobal]);
@@ -346,7 +355,6 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={!!editingFuncionario} 
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -361,7 +369,6 @@ export function TrainingClient() {
                           ))}
                         </SelectContent>
                       </Select>
-                       {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar.</FormDescription>}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -387,6 +394,7 @@ export function TrainingClient() {
                             <SelectItem 
                               key={emp.id} 
                               value={emp.id}
+                              // Disable other companies if a global company context is active AND we are NOT editing that specific company's employee
                               disabled={!!activeEmpresaIdGlobal && 
                                         activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && 
                                         emp.id !== activeEmpresaIdGlobal &&
@@ -399,8 +407,8 @@ export function TrainingClient() {
                            {allEmpresas.length === 0 && <SelectItem value="no-empresa-placeholder" disabled>Nenhuma empresa cadastrada</SelectItem>}
                         </SelectContent>
                       </Select>
-                      {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && !editingFuncionario &&
-                        <FormDescription>Contexto global: {getEmpresaById(activeEmpresaIdGlobal)?.nome}. Funcionário será associado a esta empresa por padrão, ou pode ser "Disponível".</FormDescription>
+                      {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && !editingFuncionario && currentActiveEmpresaDetails &&
+                        <FormDescription>Contexto global: {currentActiveEmpresaDetails.nome}. Funcionário será associado a esta empresa ou pode ser "Disponível".</FormDescription>
                       }
                       <FormMessage />
                     </FormItem>
@@ -436,8 +444,8 @@ export function TrainingClient() {
               {editingFuncionario && (
                 <Button type="button" variant="outline" onClick={() => {
                   setEditingFuncionario(null);
-                  const defaultEmpresaId = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
-                  form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaId });
+                  const defaultEmpresaIdForReset = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
+                  form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset });
                 }}>
                   Cancelar Edição
                 </Button>
@@ -454,7 +462,7 @@ export function TrainingClient() {
                 Gerenciar Funcionários Ativos por Departamento
             </CardTitle>
             <CardDescription>
-                Selecione qual funcionário (ativo e não em férias) deve estar ativo para cada departamento. 
+                Selecione qual funcionário (status "Ativo") deve estar ativo para cada departamento. 
                 A seleção respeita o contexto da empresa globalmente ativa (funcionários da empresa ativa ou "Disponíveis").
             </CardDescription>
              {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && currentActiveEmpresaDetails && (
@@ -530,6 +538,7 @@ export function TrainingClient() {
         </CardHeader>
         {displayedFuncionariosAtivos.length > 0 && (
           <CardContent className="space-y-4 pt-4">
+             <h4 className="text-md font-medium text-foreground">Status: Ativos</h4>
             {displayedFuncionariosAtivos.map((func) => (
               <Card key={func.id} className="p-4 shadow-sm">
                 <div className="flex justify-between items-start">
@@ -542,9 +551,6 @@ export function TrainingClient() {
                       Empresa: <span className="font-medium text-accent">{getEmpresaNome(func.empresaId)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Criado em: {new Date(func.createdAt).toLocaleDateString()}</p>
-                    <Badge variant={func.status === 'Vacation' ? 'outline' : 'secondary'} className="mt-1">
-                        {func.status === 'Vacation' ? 'De Férias' : 'Ativo'}
-                    </Badge>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center flex-wrap">
                      <Button variant="outline" size="sm" onClick={() => handleEditFuncionario(func)}>
@@ -592,9 +598,14 @@ export function TrainingClient() {
             ))}
           </CardContent>
         )}
-        {displayedFuncionariosAtivos.length === 0 && (
+        {displayedFuncionariosAtivos.length === 0 && displayedFuncionariosFerias.length > 0 && (
             <CardContent className="pt-6">
-              <p className="text-muted-foreground text-center">Nenhum funcionário ativo encontrado para o filtro: "{getLocalFilterLabel()}".</p>
+              <p className="text-muted-foreground text-center">Nenhum funcionário ativo encontrado para o filtro: "{getLocalFilterLabel()}". Verifique os funcionários em férias abaixo.</p>
+            </CardContent>
+        )}
+         {displayedFuncionariosAtivos.length === 0 && displayedFuncionariosFerias.length === 0 && (
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">Nenhum funcionário para exibir com o filtro: "{getLocalFilterLabel()}". Crie um novo funcionário ou ajuste os filtros.</p>
             </CardContent>
         )}
       </Card>
@@ -604,9 +615,9 @@ export function TrainingClient() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Briefcase className="mr-2 h-6 w-6 text-muted-foreground" />
-              Funcionários em Férias (<span className="font-normal text-base">{getLocalFilterLabel()}</span>)
+              Funcionários em Férias
             </CardTitle>
-            <CardDescription>Funcionários que estão de férias. Você pode reativá-los, cloná-los ou demiti-los.</CardDescription>
+            <CardDescription>Visualizando: <span className="font-semibold">{getLocalFilterLabel()}</span>. Funcionários que estão de férias. Você pode reativá-los, cloná-los ou demiti-los.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {displayedFuncionariosFerias.map((func) => (
@@ -621,9 +632,6 @@ export function TrainingClient() {
                       Empresa: <span className="font-medium">{getEmpresaNome(func.empresaId)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Em férias desde: {new Date(func.createdAt).toLocaleDateString()}</p>
-                     <Badge variant={'outline'} className="mt-1 text-muted-foreground border-muted-foreground/50">
-                        De Férias
-                    </Badge>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => handleChangeFuncionarioStatus(func.id, 'Active')}>
@@ -668,13 +676,6 @@ export function TrainingClient() {
             ))}
           </CardContent>
         </Card>
-      )}
-      {displayedFuncionariosAtivos.length === 0 && displayedFuncionariosFerias.length === 0 && (
-         <Card>
-            <CardContent className="pt-6">
-              <p className="text-muted-foreground text-center">Nenhum funcionário para exibir com o filtro atual: "{getLocalFilterLabel()}". Crie um novo funcionário ou ajuste os filtros.</p>
-            </CardContent>
-         </Card>
       )}
     </div>
   );
