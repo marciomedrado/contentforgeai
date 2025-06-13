@@ -56,7 +56,6 @@ import {
   DialogTitle as DialogTitleUi,
   DialogDescription as DialogDescriptionUi,
   DialogFooter as DialogFooterUi,
-  DialogTrigger as DialogTriggerUi,
   DialogClose,
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
@@ -408,11 +407,11 @@ export function TrainingClient() {
                             <Input placeholder="https://exemplo.com/avatar.png" {...field} />
                         </FormControl>
                         <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
-                            <DialogTriggerUi asChild>
+                            <DialogTitleUi asChild>
                                 <Button type="button" variant="outline" size="sm" onClick={() => { setGeneratedAvatarDataUri(null); setAvatarGenPrompt(''); }}>
                                     <Sparkles className="mr-2 h-4 w-4" /> Gerar com IA
                                 </Button>
-                            </DialogTriggerUi>
+                            </DialogTitleUi>
                             <DialogContent className="sm:max-w-[500px]">
                                 <DialogHeader>
                                 <DialogTitleUi>Gerar Avatar com IA</DialogTitleUi>
@@ -851,7 +850,7 @@ export function TrainingClient() {
 
       {/* Avatar Viewer Dialog */}
       <Dialog open={isAvatarViewerOpen} onOpenChange={setIsAvatarViewerOpen}>
-        <DialogContent className="sm:max-w-[450px]">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitleUi>Visualizar Avatar</DialogTitleUi>
           </DialogHeader>
@@ -860,12 +859,12 @@ export function TrainingClient() {
               <Image
                 src={avatarToViewUrl}
                 alt="Avatar Ampliado"
-                width={400}
-                height={400}
+                width={600}
+                height={600}
                 className="rounded-md object-contain border"
                 data-ai-hint="avatar person"
                 onError={(e) => {
-                  e.currentTarget.src = 'https://placehold.co/400x400.png';
+                  e.currentTarget.src = 'https://placehold.co/600x600.png';
                   e.currentTarget.alt = 'Placeholder Avatar';
                 }}
               />
@@ -884,7 +883,3 @@ export function TrainingClient() {
     </div>
   );
 }
-
-    
-
-    
