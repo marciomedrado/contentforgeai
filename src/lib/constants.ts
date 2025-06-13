@@ -55,3 +55,6 @@ export const REFINEMENT_PROMPTS_STORAGE_KEY = 'contentForgeAi_refinementPrompts'
 export const FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_funcionarios';
 export const ACTIVE_FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_activeFuncionarios';
 export const EMPRESAS_STORAGE_KEY = 'contentForgeAi_empresas';
+export const ACTIVE_EMPRESA_ID_STORAGE_KEY = 'contentForgeAi_activeEmpresaId';
+
+export const ALL_EMPRESAS_OR_VISAO_GERAL_VALUE = '_ALL_EMPRESAS_';
