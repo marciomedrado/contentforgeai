@@ -1,8 +1,8 @@
 
 "use client";
 
-import type { ContentStatus } from '@/lib/types'; // Removed Platform as it's handled globally
-import { CONTENT_STATUS_OPTIONS } from '@/lib/constants';
+import type { ContentStatus, Platform } from '@/lib/types';
+import { CONTENT_STATUS_OPTIONS, PLATFORM_OPTIONS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -13,37 +13,36 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 export interface ContentFiltersState {
-  // platform?: Platform; // Removed: Handled by global empresa filter
+  platform?: Platform;
   status?: ContentStatus;
   dateFrom?: Date;
   dateTo?: Date;
   searchTerm?: string;
-  empresaId?: string | null; // This will be controlled globally by AppHeader now
+  empresaId?: string | null;
 }
 
 interface ContentFiltersProps {
   filters: ContentFiltersState;
   onFiltersChange: (filters: ContentFiltersState) => void;
   className?: string;
-  // empresas prop is no longer needed here as company selection is global
 }
 
 export function ContentFilters({ filters, onFiltersChange, className }: ContentFiltersProps) {
   
   const handleResetFilters = () => {
     onFiltersChange({
-      // platform: undefined, // Removed
+      platform: undefined,
       status: undefined,
       dateFrom: undefined,
       dateTo: undefined,
       searchTerm: undefined,
-      empresaId: filters.empresaId, // Keep global empresaId if set
+      empresaId: filters.empresaId, 
     });
   };
   
   return (
     <div className={cn("mb-6 p-4 border rounded-lg shadow-sm bg-card", className)}>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
         <div className="space-y-1">
           <label htmlFor="searchTerm" className="text-sm font-medium text-muted-foreground">Pesquisar</label>
           <Input
@@ -54,7 +53,23 @@ export function ContentFilters({ filters, onFiltersChange, className }: ContentF
           />
         </div>
         
-        {/* Platform filter removed - now global via AppHeader */}
+        <div className="space-y-1">
+          <label htmlFor="platform" className="text-sm font-medium text-muted-foreground">Plataforma</label>
+          <Select
+            value={filters.platform}
+            onValueChange={(value) => onFiltersChange({ ...filters, platform: value === "all" ? undefined : value as Platform | undefined })}
+          >
+            <SelectTrigger id="platform">
+              <SelectValue placeholder="Todas Plataformas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas Plataformas</SelectItem>
+              {PLATFORM_OPTIONS.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <div className="space-y-1">
           <label htmlFor="status" className="text-sm font-medium text-muted-foreground">Status</label>
@@ -130,7 +145,7 @@ export function ContentFilters({ filters, onFiltersChange, className }: ContentF
             </PopoverContent>
           </Popover>
         </div>
-        <Button onClick={handleResetFilters} variant="ghost" className="xl:mt-5 text-sm">
+        <Button onClick={handleResetFilters} variant="ghost" className="text-sm lg:mt-auto h-10">
             <FilterX className="mr-2 h-4 w-4" /> Resetar Filtros
         </Button>
       </div>

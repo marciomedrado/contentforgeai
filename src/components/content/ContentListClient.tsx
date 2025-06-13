@@ -70,11 +70,12 @@ export function ContentListClient() {
     // Global Empresa Filter (from AppHeader)
     if (filters.empresaId && filters.empresaId !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
       const funcionariosDaEmpresa = allFuncionarios.filter(
-        func => func.empresaId === filters.empresaId || !func.empresaId // Include "Available"
+        func => func.empresaId === filters.empresaId || !func.empresaId 
       ).map(f => f.id);
       
       itemsToFilter = itemsToFilter.filter(item => 
-        item.createdByFuncionarioId && funcionariosDaEmpresa.includes(item.createdByFuncionarioId)
+        (item.createdByFuncionarioId && funcionariosDaEmpresa.includes(item.createdByFuncionarioId)) || // Content by company's employee
+        (!item.createdByFuncionarioId && !filters.empresaId) // Content without employee ID, show if no specific company filter
       );
     }
 
@@ -84,7 +85,9 @@ export function ContentListClient() {
           !item.topic.toLowerCase().includes(filters.searchTerm.toLowerCase())) {
         return false;
       }
-      // Platform filter is removed from local state, as it's part of global empresa context now implicitly or not primary.
+      
+      if (filters.platform && item.platform !== filters.platform) return false;
+      
       if (filters.status && filters.status !== "all" && item.status !== filters.status) return false;
       
       const itemDate = parseISO(item.createdAt);
