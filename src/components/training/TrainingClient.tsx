@@ -37,7 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label as UiLabel } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2, Filter, UserCircle, Sparkles, Bot, Loader2 } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2, Filter, UserCircle, Sparkles, Bot, Loader2, Eye } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,7 +57,7 @@ import {
   DialogDescription as DialogDescriptionUi,
   DialogFooter as DialogFooterUi,
   DialogTrigger as DialogTriggerUi,
-  DialogClose as DialogCloseUi,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
 import { useActiveEmpresa } from '@/hooks/useActiveEmpresa';
@@ -92,6 +92,9 @@ export function TrainingClient() {
   const [avatarGenPrompt, setAvatarGenPrompt] = useState('');
   const [generatedAvatarDataUri, setGeneratedAvatarDataUri] = useState<string | null>(null);
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
+
+  const [isAvatarViewerOpen, setIsAvatarViewerOpen] = useState(false);
+  const [avatarToViewUrl, setAvatarToViewUrl] = useState<string | null>(null);
 
 
   const form = useForm<FuncionarioFormData>({
@@ -334,6 +337,11 @@ export function TrainingClient() {
     }
   };
 
+  const openAvatarViewer = (url: string) => {
+    setAvatarToViewUrl(url);
+    setIsAvatarViewerOpen(true);
+  };
+
   return (
     <div className="space-y-8">
       {currentActiveEmpresaDetails && (
@@ -439,7 +447,7 @@ export function TrainingClient() {
                                     )}
                                 </div>
                                 <DialogFooterUi>
-                                <DialogCloseUi asChild><Button type="button" variant="outline">Cancelar</Button></DialogCloseUi>
+                                <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
                                 <Button type="button" onClick={handleUseGeneratedAvatar} disabled={!generatedAvatarDataUri || isGeneratingAvatar}>
                                     Usar esta Imagem
                                 </Button>
@@ -449,18 +457,22 @@ export function TrainingClient() {
                     </div>
                     {currentFormAvatarUrl && (
                         <div className="mt-2">
-                             <Image
-                                src={currentFormAvatarUrl}
-                                alt="Preview do Avatar"
-                                width={80}
-                                height={80}
-                                className="rounded-full border object-cover"
-                                data-ai-hint="avatar person"
-                                onError={(e) => {
-                                    e.currentTarget.src = 'https://placehold.co/80x80.png';
-                                    e.currentTarget.alt = 'Placeholder Avatar';
-                                }}
-                            />
+                             <DialogTriggerUi asChild>
+                                <button type="button" onClick={() => currentFormAvatarUrl && openAvatarViewer(currentFormAvatarUrl)} className="cursor-pointer">
+                                    <Image
+                                        src={currentFormAvatarUrl}
+                                        alt="Preview do Avatar"
+                                        width={160}
+                                        height={160}
+                                        className="rounded-full border object-cover hover:opacity-80 transition-opacity"
+                                        data-ai-hint="avatar person"
+                                        onError={(e) => {
+                                            e.currentTarget.src = 'https://placehold.co/160x160.png';
+                                            e.currentTarget.alt = 'Placeholder Avatar';
+                                        }}
+                                    />
+                                </button>
+                             </DialogTriggerUi>
                         </div>
                     )}
                     <FormMessage />
@@ -685,7 +697,11 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                     {func.avatarUrl ? (
-                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                       <DialogTriggerUi asChild>
+                        <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl)} className="cursor-pointer">
+                            <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                        </button>
+                       </DialogTriggerUi>
                     ) : (
                         <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
@@ -773,7 +789,11 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                      {func.avatarUrl ? (
-                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                        <DialogTriggerUi asChild>
+                          <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl)} className="cursor-pointer">
+                            <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                          </button>
+                        </DialogTriggerUi>
                     ) : (
                         <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
@@ -832,7 +852,41 @@ export function TrainingClient() {
           </CardContent>
         </Card>
       )}
+
+      {/* Avatar Viewer Dialog */}
+      <Dialog open={isAvatarViewerOpen} onOpenChange={setIsAvatarViewerOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitleUi>Visualizar Avatar</DialogTitleUi>
+          </DialogHeader>
+          <div className="flex justify-center items-center py-4">
+            {avatarToViewUrl ? (
+              <Image
+                src={avatarToViewUrl}
+                alt="Avatar Ampliado"
+                width={400}
+                height={400}
+                className="rounded-md object-contain border"
+                data-ai-hint="avatar person"
+                onError={(e) => {
+                  e.currentTarget.src = 'https://placehold.co/400x400.png';
+                  e.currentTarget.alt = 'Placeholder Avatar';
+                }}
+              />
+            ) : (
+              <p className="text-muted-foreground">Nenhuma imagem para visualizar.</p>
+            )}
+          </div>
+          <DialogFooterUi>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooterUi>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
 
+    
