@@ -477,7 +477,6 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        // disabled={!!editingFuncionario} // Allow department change
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -492,7 +491,6 @@ export function TrainingClient() {
                           ))}
                         </SelectContent>
                       </Select>
-                       {/* {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar.</FormDescription>} */}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -687,9 +685,9 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                     {func.avatarUrl ? (
-                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/60x60.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                     ) : (
-                        <UserCircle className="h-14 w-14 text-muted-foreground flex-shrink-0 mt-1" />
+                        <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
                     <div>
                         <h3 className="text-lg font-semibold">{func.nome}</h3>
@@ -775,9 +773,9 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                      {func.avatarUrl ? (
-                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/60x60.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                     ) : (
-                        <UserCircle className="h-14 w-14 text-muted-foreground flex-shrink-0 mt-1" />
+                        <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
                     <div>
                         <h3 className="text-lg font-semibold text-muted-foreground">{func.nome}</h3>
