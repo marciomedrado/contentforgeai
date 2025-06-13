@@ -457,22 +457,20 @@ export function TrainingClient() {
                     </div>
                     {currentFormAvatarUrl && (
                         <div className="mt-2">
-                             <DialogTriggerUi asChild>
-                                <button type="button" onClick={() => currentFormAvatarUrl && openAvatarViewer(currentFormAvatarUrl)} className="cursor-pointer">
-                                    <Image
-                                        src={currentFormAvatarUrl}
-                                        alt="Preview do Avatar"
-                                        width={160}
-                                        height={160}
-                                        className="rounded-full border object-cover hover:opacity-80 transition-opacity"
-                                        data-ai-hint="avatar person"
-                                        onError={(e) => {
-                                            e.currentTarget.src = 'https://placehold.co/160x160.png';
-                                            e.currentTarget.alt = 'Placeholder Avatar';
-                                        }}
-                                    />
-                                </button>
-                             </DialogTriggerUi>
+                            <button type="button" onClick={() => currentFormAvatarUrl && openAvatarViewer(currentFormAvatarUrl)} className="cursor-pointer">
+                                <Image
+                                    src={currentFormAvatarUrl}
+                                    alt="Preview do Avatar"
+                                    width={160}
+                                    height={160}
+                                    className="rounded-full border object-cover hover:opacity-80 transition-opacity"
+                                    data-ai-hint="avatar person"
+                                    onError={(e) => {
+                                        e.currentTarget.src = 'https://placehold.co/160x160.png';
+                                        e.currentTarget.alt = 'Placeholder Avatar';
+                                    }}
+                                />
+                            </button>
                         </div>
                     )}
                     <FormMessage />
@@ -489,6 +487,7 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
+                        disabled={false} 
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -559,6 +558,7 @@ export function TrainingClient() {
                         placeholder="Digite as instruções detalhadas que este funcionário deve seguir..."
                         {...field}
                         rows={8}
+                        suppressHydrationWarning={true}
                       />
                     </FormControl>
                     <FormDescription>
@@ -697,11 +697,9 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                     {func.avatarUrl ? (
-                       <DialogTriggerUi asChild>
                         <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl)} className="cursor-pointer">
                             <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                         </button>
-                       </DialogTriggerUi>
                     ) : (
                         <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
@@ -789,11 +787,9 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                      {func.avatarUrl ? (
-                        <DialogTriggerUi asChild>
                           <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl)} className="cursor-pointer">
                             <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                           </button>
-                        </DialogTriggerUi>
                     ) : (
                         <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
@@ -888,5 +884,7 @@ export function TrainingClient() {
     </div>
   );
 }
+
+    
 
     
