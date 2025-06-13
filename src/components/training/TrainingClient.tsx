@@ -251,7 +251,7 @@ export function TrainingClient() {
   };
 
   const getEmpresaNome = (empresaId?: string): string => {
-    if (!empresaId) return "Disponível (Sem Empresa)";
+    if (!empresaId || empresaId === SEM_EMPRESA_VALUE) return "Disponível (Sem Empresa)";
     const empresa = allEmpresas.find(e => e.id === empresaId);
     return empresa ? empresa.nome : "Empresa Desconhecida";
   };
@@ -417,11 +417,18 @@ export function TrainingClient() {
                             <Input placeholder="https://exemplo.com/avatar.png" {...field} />
                         </FormControl>
                         <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
-                            <DialogTitleUi asChild>
-                                <Button type="button" variant="outline" size="sm" onClick={() => { setGeneratedAvatarDataUri(null); setAvatarGenPrompt(''); }}>
-                                    <Sparkles className="mr-2 h-4 w-4" /> Gerar com IA
-                                </Button>
-                            </DialogTitleUi>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setGeneratedAvatarDataUri(null);
+                                    setAvatarGenPrompt('');
+                                    setIsAvatarModalOpen(true);
+                                }}
+                            >
+                                <Sparkles className="mr-2 h-4 w-4" /> Gerar com IA
+                            </Button>
                             <DialogContent className="sm:max-w-[500px]">
                                 <DialogHeader>
                                 <DialogTitleUi>Gerar Avatar com IA</DialogTitleUi>
@@ -435,6 +442,7 @@ export function TrainingClient() {
                                         value={avatarGenPrompt}
                                         onChange={(e) => setAvatarGenPrompt(e.target.value)}
                                         rows={3}
+                                        suppressHydrationWarning
                                     />
                                     <Button type="button" onClick={handleGenerateAvatar} disabled={isGeneratingAvatar || !avatarGenPrompt.trim()}>
                                         {isGeneratingAvatar ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
@@ -466,7 +474,7 @@ export function TrainingClient() {
                     </div>
                     {currentFormAvatarUrl && (
                         <div className="mt-2">
-                             <button
+                            <button
                                 type="button"
                                 onClick={() =>
                                 currentFormAvatarUrl &&
@@ -717,7 +725,7 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                     {func.avatarUrl ? (
-                        <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer" disabled={!func.avatarUrl}>
+                        <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer">
                             <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                         </button>
                     ) : (
@@ -807,7 +815,7 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                      {func.avatarUrl ? (
-                          <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer" disabled={!func.avatarUrl}>
+                          <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer">
                             <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                           </button>
                     ) : (
