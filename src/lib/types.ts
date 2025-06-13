@@ -66,11 +66,27 @@ export interface SavedRefinementPrompt {
 
 export type FuncionarioStatus = 'Active' | 'Vacation';
 
+export interface ApiConfigField {
+  value?: string;
+  label: string;
+  placeholder: string;
+  type?: 'text' | 'password' | 'url';
+}
+
+export interface PlatformApiConfig {
+  [key: string]: ApiConfigField | undefined; // e.g., apiUrl, username, password/token
+}
+
 export interface Empresa {
   id: string;
   nome: string;
   logoUrl?: string;
   createdAt: string; // ISO date string
+  apiConfigs?: {
+    wordpress?: PlatformApiConfig;
+    instagram?: PlatformApiConfig;
+    facebook?: PlatformApiConfig;
+  };
 }
 
 export interface Funcionario {

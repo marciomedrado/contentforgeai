@@ -111,9 +111,9 @@ export const saveStoredThemeSuggestions = (themes: ThemeSuggestion[]): void => {
 export const addThemeSuggestion = (theme: ThemeSuggestion): void => {
   const themes = getStoredThemeSuggestions();
   if (!themes.some(t => t.userInputTopic === theme.userInputTopic && t.title === theme.title && t.description === theme.description)) {
-    const themeToSave: ThemeSuggestion = { 
-      ...theme, 
-      suggestedKeywords: theme.suggestedKeywords || [], 
+    const themeToSave: ThemeSuggestion = {
+      ...theme,
+      suggestedKeywords: theme.suggestedKeywords || [],
       manualReferences: theme.manualReferences || [],
       createdByFuncionarioId: theme.createdByFuncionarioId,
     };
@@ -221,7 +221,7 @@ export const addSavedRefinementPrompt = (prompt: SavedRefinementPrompt): void =>
   const prompts = getSavedRefinementPrompts();
   const existingIndex = prompts.findIndex(p => p.name.toLowerCase() === prompt.name.toLowerCase());
   if (existingIndex > -1) {
-    prompts[existingIndex] = { ...prompt, id: prompts[existingIndex].id }; 
+    prompts[existingIndex] = { ...prompt, id: prompts[existingIndex].id };
   } else {
     prompts.unshift(prompt);
   }
@@ -274,7 +274,7 @@ export const getFuncionarioById = (id: string): Funcionario | undefined => {
 export const deleteFuncionarioById = (id: string): void => {
   const funcionarios = getFuncionariosUnfiltered();
   safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.filter(f => f.id !== id));
-  
+
   const activeFuncionarios = getActiveFuncionariosMap();
   let changed = false;
   DEPARTAMENTOS.forEach(depInfo => {
@@ -331,7 +331,7 @@ const saveActiveFuncionariosMap = (map: Record<string, string | null>): void => 
 export const setActiveFuncionarioForDepartamento = (departamento: Departamento, funcionarioId: string | null): void => {
   const activeMap = getActiveFuncionariosMap();
   if (funcionarioId === null || funcionarioId === '') {
-    activeMap[departamento] = null; 
+    activeMap[departamento] = null;
   } else {
     activeMap[departamento] = funcionarioId;
   }
@@ -348,18 +348,20 @@ export const getActiveFuncionarioForDepartamento = (departamento: Departamento, 
   if (!activeFuncIdForDept) return null;
 
   const funcionario = getFuncionarioById(activeFuncIdForDept);
-  
+
   // If no funcionario found by ID, or if funcionario is on vacation, return null
   if (!funcionario || funcionario.status === 'Vacation') {
-    // If the active Funcionario ID pointed to someone on vacation, clear it for the department
-    if (funcionario && funcionario.status === 'Vacation' && activeMap[departamento] === activeFuncIdForDept) {
+     // If the active Funcionario ID pointed to someone on vacation, clear it for the department
+    if (funcionario && funcionario.status === 'Vacation' ) {
         const activeMap = getActiveFuncionariosMap();
-        activeMap[departamento] = null;
-        saveActiveFuncionariosMap(activeMap);
+        if (activeMap[departamento] === activeFuncIdForDept) {
+          activeMap[departamento] = null;
+          saveActiveFuncionariosMap(activeMap);
+        }
     }
     return null;
   }
-  
+
   // If a global company context is active (not "Visão Geral")
   if (globalActiveEmpresaId && globalActiveEmpresaId !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
     // Funcionario must belong to the active company OR be "Available" (no empresaId)
@@ -381,10 +383,15 @@ export const getEmpresas = (): Empresa[] => {
 export const saveEmpresa = (empresa: Empresa): void => {
   let empresas = getEmpresas();
   const existingIndex = empresas.findIndex(e => e.id === empresa.id);
+  const empresaToSave: Empresa = {
+    ...empresa,
+    apiConfigs: empresa.apiConfigs || {}, // Ensure apiConfigs is initialized
+  };
+
   if (existingIndex > -1) {
-    empresas[existingIndex] = empresa;
+    empresas[existingIndex] = empresaToSave;
   } else {
-    empresas.unshift(empresa);
+    empresas.unshift(empresaToSave);
   }
   safeLocalStorageSet<Empresa[]>(EMPRESAS_STORAGE_KEY, empresas.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 };
@@ -410,7 +417,7 @@ export const deleteEmpresaById = (id: string): void => {
   if (funcionariosChanged) {
     safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios);
   }
-  
+
   // If the deleted empresa was the active one, reset active empresa
   const currentActiveEmpresaId = getActiveEmpresaId();
   if (currentActiveEmpresaId === id) {
@@ -454,7 +461,7 @@ export const clearAllData = (): void => {
   clearAllThemeSuggestions();
   clearAllSummaries();
   saveStoredRefinementPrompts([]);
-  clearAllFuncionarios(); 
+  clearAllFuncionarios();
   clearAllEmpresas();
   setActiveEmpresaId(null); // Also clear active empresa
 };
