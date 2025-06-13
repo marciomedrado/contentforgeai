@@ -37,7 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label as UiLabel } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2, Filter, UserCircle, Sparkles, Bot } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2, Filter, UserCircle, Sparkles, Bot, Loader2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -477,6 +477,7 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
+                        // disabled={!!editingFuncionario} // Allow department change
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -491,6 +492,7 @@ export function TrainingClient() {
                           ))}
                         </SelectContent>
                       </Select>
+                       {/* {editingFuncionario && <FormDescription>O departamento não pode ser alterado ao editar.</FormDescription>} */}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -685,7 +687,7 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                     {func.avatarUrl ? (
-                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/60x60.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                     ) : (
                         <UserCircle className="h-14 w-14 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
@@ -773,7 +775,7 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                      {func.avatarUrl ? (
-                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/60x60.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                     ) : (
                         <UserCircle className="h-14 w-14 text-muted-foreground flex-shrink-0 mt-1" />
                     )}
