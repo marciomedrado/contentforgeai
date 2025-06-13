@@ -1,17 +1,22 @@
 
-import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt } from './types';
-import { 
-  DEFAULT_OUTPUT_LANGUAGE, 
-  CONTENT_STORAGE_KEY, 
-  SETTINGS_STORAGE_KEY, 
-  THEMES_STORAGE_KEY, 
+import type { ContentItem, AppSettings, ThemeSuggestion, ManualReferenceItem, SummarizationItem, SavedRefinementPrompt, Funcionario, Departamento, FuncionarioStatus } from './types';
+import {
+  DEFAULT_OUTPUT_LANGUAGE,
+  CONTENT_STORAGE_KEY,
+  SETTINGS_STORAGE_KEY,
+  THEMES_STORAGE_KEY,
   SUMMARIES_STORAGE_KEY,
-  REFINEMENT_PROMPTS_STORAGE_KEY 
+  REFINEMENT_PROMPTS_STORAGE_KEY,
+  FUNCIONARIOS_STORAGE_KEY,
+  ACTIVE_FUNCIONARIOS_STORAGE_KEY,
+  DEPARTAMENTOS,
 } from './constants';
 
 // Helper to safely interact with localStorage
-const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
+const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
+  if (typeof window === 'undefined') {
+    return defaultValue;
+  }
   try {
     const item = window.localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
@@ -21,8 +26,10 @@ const safeLocalStorageGet = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
-const safeLocalStorageSet = <T,>(key: string, value: T): void => {
-  if (typeof window === 'undefined') return;
+const safeLocalStorageSet = <T>(key: string, value: T): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
   try {
     const oldValue = window.localStorage.getItem(key);
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -67,14 +74,15 @@ export const deleteContentItemById = (id: string): void => {
 };
 
 export const clearAllContentItems = (): void => {
-  safeLocalStorageSet<ContentItem[]>(CONTENT_STORAGE_KEY, []);
+  saveStoredContentItems([]);
 };
 
 
 // App Settings
 export const getStoredSettings = (): AppSettings => {
   const defaultSettings: AppSettings = {
-    openAIKey: '', 
+    openAIKey: '',
+    openAIAgentId: '',
     outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
     perplexityApiKey: '',
   };
@@ -109,7 +117,7 @@ export const deleteThemeSuggestionById = (id: string): void => {
 };
 
 export const clearAllThemeSuggestions = (): void => {
-  safeLocalStorageSet<ThemeSuggestion[]>(THEMES_STORAGE_KEY, []);
+  saveStoredThemeSuggestions([]);
 };
 
 export const addManualReferenceToTheme = (themeId: string, reference: ManualReferenceItem): void => {
@@ -119,7 +127,7 @@ export const addManualReferenceToTheme = (themeId: string, reference: ManualRefe
     if (!themes[themeIndex].manualReferences) {
       themes[themeIndex].manualReferences = [];
     }
-    themes[themeIndex].manualReferences!.unshift(reference); 
+    themes[themeIndex].manualReferences!.unshift(reference);
     saveStoredThemeSuggestions(themes);
   }
 };
@@ -179,7 +187,7 @@ export const deleteSummarizationItemById = (id: string): void => {
 };
 
 export const clearAllSummaries = (): void => {
-  safeLocalStorageSet<SummarizationItem[]>(SUMMARIES_STORAGE_KEY, []);
+  saveStoredSummaries([]);
 };
 
 // Saved Refinement Prompts
@@ -209,10 +217,123 @@ export const deleteSavedRefinementPromptById = (id: string): void => {
 };
 
 
+// Funcionarios
+export const getFuncionarios = (): Funcionario[] => {
+  return safeLocalStorageGet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+export const saveFuncionario = (funcionario: Funcionario): void => {
+  let funcionarios = getFuncionarios();
+  const existingIndex = funcionarios.findIndex(f => f.id === funcionario.id);
+  const funcionarioToSave = { ...funcionario, status: funcionario.status || 'Active' };
+
+
+  if (existingIndex > -1) {
+    // Update existing funcionario
+    funcionarios[existingIndex] = funcionarioToSave;
+  } else {
+    // Add new funcionario
+    funcionarios.unshift(funcionarioToSave);
+  }
+  safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+};
+
+export const getFuncionarioById = (id: string): Funcionario | undefined => {
+  const funcionarios = getFuncionarios();
+  return funcionarios.find(f => f.id === id);
+};
+
+export const deleteFuncionarioById = (id: string): void => {
+  const funcionarios = getFuncionarios();
+  safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios.filter(f => f.id !== id));
+  
+  // If the deleted funcionario was active, deactivate it
+  const activeFuncionarios = getActiveFuncionariosMap();
+  let changed = false;
+  DEPARTAMENTOS.forEach(depInfo => {
+    const dep = depInfo.value as Departamento;
+    if (activeFuncionarios[dep] === id) {
+      activeFuncionarios[dep] = null;
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveActiveFuncionariosMap(activeFuncionarios);
+  }
+};
+
+export const clearAllFuncionarios = (): void => {
+  safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, []);
+  safeLocalStorageSet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
+};
+
+export const setFuncionarioStatus = (funcionarioId: string, status: FuncionarioStatus): void => {
+  let funcionarios = getFuncionarios();
+  const funcionarioIndex = funcionarios.findIndex(f => f.id === funcionarioId);
+  if (funcionarioIndex > -1) {
+    funcionarios[funcionarioIndex].status = status;
+    safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios);
+
+    // If set to 'Vacation', deactivate from all departments
+    if (status === 'Vacation') {
+      const activeMap = getActiveFuncionariosMap();
+      let activeMapChanged = false;
+      DEPARTAMENTOS.forEach(depInfo => {
+        const departamento = depInfo.value as Departamento;
+        if (activeMap[departamento] === funcionarioId) {
+          activeMap[departamento] = null;
+          activeMapChanged = true;
+        }
+      });
+      if (activeMapChanged) {
+        saveActiveFuncionariosMap(activeMap);
+      }
+    }
+  }
+};
+
+
+// Active Funcionarios Management
+const getActiveFuncionariosMap = (): Record<string, string | null> => {
+  return safeLocalStorageGet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, {});
+};
+
+const saveActiveFuncionariosMap = (map: Record<string, string | null>): void => {
+  safeLocalStorageSet<Record<string, string | null>>(ACTIVE_FUNCIONARIOS_STORAGE_KEY, map);
+}
+
+export const setActiveFuncionarioForDepartamento = (departamento: Departamento, funcionarioId: string | null): void => {
+  const activeMap = getActiveFuncionariosMap();
+  if (funcionarioId === null || funcionarioId === '') {
+    activeMap[departamento] = null; // Ensure null is set for deactivation
+  } else {
+    activeMap[departamento] = funcionarioId;
+  }
+  saveActiveFuncionariosMap(activeMap);
+};
+
+export const getActiveFuncionarioIdForDepartamento = (departamento: Departamento): string | null => {
+  const activeMap = getActiveFuncionariosMap();
+  return activeMap[departamento] || null;
+};
+
+export const getActiveFuncionarioForDepartamento = (departamento: Departamento): Funcionario | null => {
+  const activeId = getActiveFuncionarioIdForDepartamento(departamento);
+  if (!activeId) return null;
+  const funcionario = getFuncionarioById(activeId);
+  // Ensure only active (not on vacation) funcionarios are returned
+  if (funcionario && (funcionario.status === 'Active' || !funcionario.status)) {
+    return funcionario;
+  }
+  return null;
+};
+
+
 // General Data Clearing
 export const clearAllData = (): void => {
   clearAllContentItems();
   clearAllThemeSuggestions();
   clearAllSummaries();
-  saveStoredRefinementPrompts([]); // Also clear refinement prompts
+  saveStoredRefinementPrompts([]);
+  clearAllFuncionarios(); 
 };

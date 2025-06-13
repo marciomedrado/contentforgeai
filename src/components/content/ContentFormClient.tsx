@@ -6,13 +6,13 @@ import { useRouter } from 'next/navigation';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt } from '@/lib/types';
-import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY } from '@/lib/constants';
+import type { ContentItem, Platform, AppSettings, ManualReferenceItem, SavedRefinementPrompt, Funcionario } from '@/lib/types';
+import { PLATFORM_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, DEFAULT_NUMBER_OF_IMAGES, SETTINGS_STORAGE_KEY, REFINEMENT_PROMPTS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label as UiLabel } from '@/components/ui/label'; 
+import { Label as UiLabel } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -21,17 +21,17 @@ import { useToast } from '@/hooks/use-toast';
 import { generateContentForPlatform } from '@/ai/flows/generate-content-for-platform';
 import { suggestHashtags as suggestHashtagsFlow } from '@/ai/flows/smart-hashtag-suggestions';
 import { generateImage as generateImageFlow } from '@/ai/flows/generate-image-flow';
-import { 
-  getStoredSettings, 
-  addContentItem, 
-  updateContentItem, 
+import {
+  getStoredSettings,
+  addContentItem,
+  updateContentItem,
   getContentItemById,
   getSavedRefinementPrompts,
   addSavedRefinementPrompt,
   deleteSavedRefinementPromptById,
-  // saveStoredRefinementPrompts // Not directly used, but good to be aware it exists
+  getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle } from 'lucide-react';
+import { Loader2, Sparkles, Save, Tags, Image as ImageIconLucide, FileText, BookOpen, Bot, Wand2, Trash2, PlusCircle, Copy, Info, BrainCircuit } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -44,6 +44,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
 
 
 const formSchema = z.object({
@@ -84,17 +85,18 @@ export function ContentFormClient({
   const [originalPlatform, setOriginalPlatform] = useState<Platform | null>(null);
 
   const [manualReferencesForDisplay, setManualReferencesForDisplay] = useState<string[]>(initialManualReferenceTexts || []);
-  
+
   const [generatingImageFor, setGeneratingImageFor] = useState<Record<number, boolean>>({});
   const [generatedImages, setGeneratedImages] = useState<Record<number, string | null>>({});
 
-  // State for refinement modal
   const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
   const [refinementPromptText, setRefinementPromptText] = useState('');
   const [savedRefinementPrompts, setSavedRefinementPrompts] = useState<SavedRefinementPrompt[]>([]);
   const [currentRefinementPromptName, setCurrentRefinementPromptName] = useState('');
   const [isRefiningContent, setIsRefiningContent] = useState(false);
-
+  
+  const [activeContentCreationFuncionarioName, setActiveContentCreationFuncionarioName] = useState<string | null>(null);
+  const [activeThemePlannerFuncionarioName, setActiveThemePlannerFuncionarioName] = useState<string | null>(null);
 
   const form = useForm<ContentFormData>({
     resolver: zodResolver(formSchema),
@@ -113,13 +115,26 @@ export function ContentFormClient({
     setSavedRefinementPrompts(getSavedRefinementPrompts());
   }, []);
 
+  const refreshActiveFuncionariosNames = useCallback(() => {
+    const ccFunc = getActiveFuncionarioForDepartamento("ContentCreation");
+    setActiveContentCreationFuncionarioName(ccFunc ? ccFunc.nome : null);
+    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner");
+    setActiveThemePlannerFuncionarioName(tpFunc ? tpFunc.nome : null);
+  }, []);
+
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === SETTINGS_STORAGE_KEY) setCurrentSettings(getStoredSettings());
+      if (event.key === SETTINGS_STORAGE_KEY) {
+        setCurrentSettings(getStoredSettings());
+      }
+      if (event.key === FUNCIONARIOS_STORAGE_KEY || event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
+        refreshActiveFuncionariosNames();
+      }
       if (event.key === REFINEMENT_PROMPTS_STORAGE_KEY) refreshSavedRefinementPrompts();
     };
     window.addEventListener('storage', handleStorageChange);
     setCurrentSettings(getStoredSettings());
+    refreshActiveFuncionariosNames();
     refreshSavedRefinementPrompts();
 
     if (contentId) {
@@ -151,13 +166,14 @@ export function ContentFormClient({
       setManualReferencesForDisplay(initialManualReferenceTexts || []);
     }
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts]);
+  }, [contentId, initialTitle, initialTopic, initialManualReferenceTexts, form, router, toast, refreshSavedRefinementPrompts, refreshActiveFuncionariosNames]);
 
 
   const handleGenerateOrRefineContent = async (isRefinement: boolean = false, refinementInstructionsFromModal?: string) => {
     const { platform, topic, wordCount, numberOfImages, title } = form.getValues();
-    
-    if (!isRefinement && !topic) { 
+    const activeContentCreationFuncionario = getActiveFuncionarioForDepartamento("ContentCreation");
+
+    if (!isRefinement && !topic) {
       toast({ title: "Topic Required", description: "Please enter a topic to generate content.", variant: "destructive" });
       return;
     }
@@ -169,20 +185,21 @@ export function ContentFormClient({
         toast({ title: "Refinement Instructions Required", description: "Please enter instructions for refinement.", variant: "destructive" });
         return;
     }
-    
+
     if(isRefinement) setIsRefiningContent(true); else setIsLoadingAi(true);
-    setGeneratedImages({}); 
+    setGeneratedImages({});
     try {
       const result = await generateContentForPlatform({
         platform: platform as Platform,
-        topic, 
-        title, 
+        topic,
+        title,
         wordCount: wordCount && wordCount > 0 ? wordCount : undefined,
         numberOfImages: platform === 'Wordpress' ? (numberOfImages === undefined ? DEFAULT_NUMBER_OF_IMAGES : numberOfImages) : undefined,
         outputLanguage: currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
         manualReferenceTexts: manualReferencesForDisplay.length > 0 ? manualReferencesForDisplay : undefined,
         originalContent: isRefinement ? generatedContent : undefined,
         refinementInstructions: isRefinement ? refinementInstructionsFromModal : undefined,
+        customInstructions: activeContentCreationFuncionario?.instrucoes,
       });
       setGeneratedContent(result.content);
       const prompts = result.imagePrompt ? result.imagePrompt.split('\n').filter(p => p.trim() !== '') : [];
@@ -197,7 +214,7 @@ export function ContentFormClient({
       toast({ title: "AI Error", description: `Failed to ${isRefinement ? "refine" : "generate"} content. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     if(isRefinement) setIsRefiningContent(false); else setIsLoadingAi(false);
-    if(isRefinement) setIsRefineModalOpen(false); // Close modal after refinement
+    if(isRefinement) setIsRefineModalOpen(false);
   };
 
   const handleSuggestHashtags = async () => {
@@ -205,20 +222,37 @@ export function ContentFormClient({
       toast({ title: "Content Required", description: "Generate or write content before suggesting hashtags.", variant: "destructive" });
       return;
     }
-    
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
+
     setIsSuggestingHashtags(true);
     try {
       const result = await suggestHashtagsFlow({
         text: generatedContent,
         platform: platformFieldValue.toLowerCase() as 'instagram' | 'facebook' | 'general',
+        customInstructions: activeThemePlannerFuncionario?.instrucoes,
       });
       setSuggestedHashtags(result.hashtags);
       toast({ title: "Hashtags Suggested!", description: "AI has suggested relevant hashtags." });
     } catch (error) {
       console.error("Hashtag suggestion error:", error);
-      toast({ title: "AI Error", description: "Failed to suggest hashtags. Check console for details.", variant: "destructive" });
+      toast({ title: "AI Error", description: `Failed to suggest hashtags. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     setIsSuggestingHashtags(false);
+  };
+
+  const handleCopyText = (textToCopy: string, successMessage: string) => {
+    if (!textToCopy) {
+        toast({ title: "Nada para Copiar", description: "Não há texto para copiar.", variant: "destructive" });
+        return;
+    }
+    navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+            toast({ title: "Copiado!", description: successMessage });
+        })
+        .catch(err => {
+            console.error("Falha ao copiar: ", err);
+            toast({ title: "Falha ao Copiar", description: "Não foi possível copiar o texto.", variant: "destructive" });
+        });
   };
 
   const handleGenerateImage = async (promptText: string, promptIndex: number) => {
@@ -227,7 +261,7 @@ export function ContentFormClient({
       return;
     }
     setGeneratingImageFor(prev => ({ ...prev, [promptIndex]: true }));
-    setGeneratedImages(prev => ({ ...prev, [promptIndex]: null })); 
+    setGeneratedImages(prev => ({ ...prev, [promptIndex]: null }));
 
     try {
       const result = await generateImageFlow({ prompt: promptText });
@@ -236,7 +270,7 @@ export function ContentFormClient({
     } catch (error) {
       console.error("AI image generation error:", error);
       toast({ title: "AI Image Error", description: `Failed to generate image. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
-      setGeneratedImages(prev => ({ ...prev, [promptIndex]: 'error' })); 
+      setGeneratedImages(prev => ({ ...prev, [promptIndex]: 'error' }));
     }
     setGeneratingImageFor(prev => ({ ...prev, [promptIndex]: false }));
   };
@@ -293,17 +327,15 @@ export function ContentFormClient({
       createdAt: new Date().toISOString(),
     };
     addSavedRefinementPrompt(newPrompt);
-    // refreshSavedRefinementPrompts(); // No longer needed here due to storage event listener
     setCurrentRefinementPromptName('');
     toast({ title: "Refinement Prompt Saved!", description: `Prompt "${newPrompt.name}" has been saved.` });
   };
 
   const handleDeleteRefinementPrompt = (id: string) => {
     deleteSavedRefinementPromptById(id);
-    // refreshSavedRefinementPrompts(); // No longer needed here
     toast({ title: "Refinement Prompt Deleted", description: "The saved prompt has been removed." });
   };
-  
+
   const hasManualReferences = manualReferencesForDisplay.length > 0;
   const saveButtonText = existingContent && platformFieldValue === originalPlatform ? 'Update Content' : 'Save as New Draft';
 
@@ -314,6 +346,15 @@ export function ContentFormClient({
           <CardHeader>
             <CardTitle>{contentId ? 'Edit Content' : 'Create New Content'}</CardTitle>
             <CardDescription>Fill in the details below and let AI assist you in crafting perfect posts.</CardDescription>
+             <Alert variant="default" className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700 text-xs py-2">
+                <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDesc className="text-blue-700 dark:text-blue-300">
+                  {activeContentCreationFuncionarioName
+                    ? <>Geração de conteúdo usará instruções de: <span className="font-semibold">{activeContentCreationFuncionarioName}</span>.</>
+                    : "Nenhum funcionário personalizado ativo para Criação de Conteúdo. Usando prompt padrão do sistema."}
+                  {" (Configurado em Treinamento)"}
+                </AlertDesc>
+              </Alert>
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -337,7 +378,7 @@ export function ContentFormClient({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Platform</FormLabel>
-                    <Select 
+                    <Select
                       onValueChange={(value) => {
                         field.onChange(value);
                         if (existingContent && value !== originalPlatform) {
@@ -346,7 +387,7 @@ export function ContentFormClient({
                           setSuggestedHashtags([]);
                           setGeneratedImages({});
                         }
-                      }} 
+                      }}
                       value={field.value}
                       defaultValue={field.value}
                     >
@@ -431,7 +472,7 @@ export function ContentFormClient({
                 </FormItem>
               )}
             />
-            
+
             {hasManualReferences && (
               <Accordion type="single" collapsible className="w-full" defaultValue="manual-reference-materials-accordion">
                 <AccordionItem value="manual-reference-materials-accordion">
@@ -459,7 +500,6 @@ export function ContentFormClient({
               </Accordion>
             )}
 
-
             <Button type="button" onClick={() => handleGenerateOrRefineContent(false)} disabled={isLoadingAi || isRefiningContent} className="w-full md:w-auto">
               {isLoadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate Content with AI
@@ -468,32 +508,47 @@ export function ContentFormClient({
         </Card>
 
         {generatedContent && (
-          <Card>
-            <CardHeader>
+          <Card className="flex flex-col flex-grow min-h-[400px]">
+            <CardHeader className="flex flex-row justify-between items-center">
               <CardTitle>Generated Content</CardTitle>
+              {platformFieldValue !== 'Wordpress' && (
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCopyText(generatedContent, "Conteúdo gerado copiado!");
+                    }}
+                    disabled={!generatedContent}
+                >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copiar Conteúdo
+                </Button>
+              )}
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-grow flex flex-col">
               {platformFieldValue === 'Wordpress' ? (
-                <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} />
+                <HtmlEditor initialHtml={generatedContent} onHtmlChange={setGeneratedContent} className="flex-grow" />
               ) : (
                 <Textarea
                   value={generatedContent}
                   onChange={(e) => setGeneratedContent(e.target.value)}
-                  rows={15}
                   placeholder="Generated content will appear here..."
-                  className="min-h-[300px]"
+                  className="flex-grow resize-none"
                   suppressHydrationWarning={true}
                 />
               )}
             </CardContent>
-            <CardFooter className="flex justify-start"> {/* Changed from justify-end */}
+            <CardFooter className="flex justify-start">
                  <Dialog open={isRefineModalOpen} onOpenChange={setIsRefineModalOpen}>
                     <DialogTrigger asChild>
-                        <Button 
-                            type="button" 
-                            variant="outline" 
+                        <Button
+                            type="button"
+                            variant="outline"
                             disabled={!generatedContent || isLoadingAi || isRefiningContent}
-                            onClick={() => { setIsRefineModalOpen(true); setRefinementPromptText(''); setCurrentRefinementPromptName('');}} // Reset on open
+                            onClick={() => { setIsRefineModalOpen(true); setRefinementPromptText(''); setCurrentRefinementPromptName('');}}
                         >
                             <Wand2 className="mr-2 h-4 w-4" />
                             Refine Content with AI
@@ -515,6 +570,7 @@ export function ContentFormClient({
                                 value={refinementPromptText}
                                 onChange={(e) => setRefinementPromptText(e.target.value)}
                                 rows={5}
+                                suppressHydrationWarning={true}
                                 />
                             </div>
                             <div className="grid gap-2">
@@ -524,8 +580,6 @@ export function ContentFormClient({
                                     const selected = savedRefinementPrompts.find(p => p.id === value);
                                     if (selected) {
                                       setRefinementPromptText(selected.promptText);
-                                      // Optionally set name if user wants to resave with same name
-                                      // setCurrentRefinementPromptName(selected.name); 
                                     }
                                 }}
                                 >
@@ -550,6 +604,7 @@ export function ContentFormClient({
                                       value={currentRefinementPromptName}
                                       onChange={(e) => setCurrentRefinementPromptName(e.target.value)}
                                       placeholder="e.g., Formal Tone Adjuster"
+                                      suppressHydrationWarning={true}
                                   />
                                 </div>
                                 <Button type="button" size="sm" variant="outline" onClick={handleSaveRefinementPrompt} disabled={!currentRefinementPromptName.trim() || !refinementPromptText.trim()}>
@@ -578,9 +633,9 @@ export function ContentFormClient({
                         <DialogClose asChild>
                             <Button type="button" variant="outline">Cancel</Button>
                         </DialogClose>
-                        <Button 
-                            type="button" 
-                            onClick={() => handleGenerateOrRefineContent(true, refinementPromptText)} 
+                        <Button
+                            type="button"
+                            onClick={() => handleGenerateOrRefineContent(true, refinementPromptText)}
                             disabled={isRefiningContent || isLoadingAi || !refinementPromptText.trim()}
                         >
                             {isRefiningContent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -614,24 +669,57 @@ export function ContentFormClient({
                     rows={2}
                     suppressHydrationWarning={true}
                   />
-                  <Button 
-                    type="button" 
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleGenerateImage(prompt, index)} 
-                    disabled={generatingImageFor[index] || !prompt.trim()}
-                  >
-                    {generatingImageFor[index] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
-                    Gerar Imagem
-                  </Button>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleGenerateImage(prompt, index);
+                      }}
+                      disabled={generatingImageFor[index] || !prompt.trim()}
+                    >
+                      {generatingImageFor[index] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+                      Gerar Imagem
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCopyText(prompt, "Prompt copiado para a área de transferência!");
+                      }}
+                      disabled={!prompt.trim()}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copiar Prompt
+                    </Button>
+                  </div>
                   {generatingImageFor[index] && <p className="text-xs text-muted-foreground">Gerando imagem, aguarde...</p>}
                   {generatedImages[index] && generatedImages[index] !== 'error' && (
-                    <div className="mt-2">
-                      <img 
-                        src={generatedImages[index]!} 
-                        alt={`Generated for prompt: ${prompt.substring(0, 50)}...`} 
+                    <div className="mt-2 space-y-2">
+                      <img
+                        src={generatedImages[index]!}
+                        alt={`Generated for prompt: ${prompt.substring(0, 50)}...`}
                         className="rounded-md border max-w-xs max-h-xs object-contain"
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleCopyText(generatedImages[index]!, "Data URI da imagem copiado!");
+                        }}
+                      >
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copiar Imagem (Data URI)
+                      </Button>
                     </div>
                   )}
                   {generatedImages[index] === 'error' && <p className="text-xs text-destructive">Falha ao gerar imagem.</p>}
@@ -645,12 +733,32 @@ export function ContentFormClient({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><Tags className="mr-2 h-5 w-5" /> Hashtags</CardTitle>
+                 <Alert variant="default" className="mt-2 bg-indigo-50 border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 text-xs py-2">
+                    <BrainCircuit className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <AlertDesc className="text-indigo-700 dark:text-indigo-300">
+                    {activeThemePlannerFuncionarioName
+                        ? <>Sugestões de Hashtag usarão instruções de: <span className="font-semibold">{activeThemePlannerFuncionarioName}</span>.</>
+                        : "Nenhum funcionário personalizado ativo para Planejador de Temas. Hashtags usarão prompt padrão."}
+                    {" (Configurado em Treinamento)"}
+                    </AlertDesc>
+                </Alert>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button type="button" variant="outline" onClick={handleSuggestHashtags} disabled={isSuggestingHashtags || !generatedContent} className="w-full md:w-auto">
-                {isSuggestingHashtags ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Suggest Hashtags
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button type="button" variant="outline" onClick={handleSuggestHashtags} disabled={isSuggestingHashtags || !generatedContent}>
+                  {isSuggestingHashtags ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                  Suggest Hashtags
+                </Button>
+                {suggestedHashtags.length > 0 && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleCopyText(suggestedHashtags.map(h => `#${h}`).join(' '), "Hashtags copiadas!")}
+                    >
+                        <Copy className="mr-2 h-4 w-4" /> Copiar Hashtags
+                    </Button>
+                )}
+              </div>
               {suggestedHashtags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {suggestedHashtags.map(tag => (
@@ -672,3 +780,5 @@ export function ContentFormClient({
     </Form>
   );
 }
+
+    

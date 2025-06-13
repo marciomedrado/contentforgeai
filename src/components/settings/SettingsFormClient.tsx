@@ -6,7 +6,7 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { AppSettings } from '@/lib/types';
-import { getStoredSettings, saveStoredSettings, clearAllContentItems, clearAllThemeSuggestions, clearAllData } from '@/lib/storageService';
+import { getStoredSettings, saveStoredSettings, clearAllContentItems, clearAllThemeSuggestions, clearAllSummaries, clearAllData } from '@/lib/storageService';
 import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,10 +74,15 @@ export function SettingsFormClient() {
     clearAllThemeSuggestions();
     toast({ title: "Themes Cleared", description: "All theme suggestions have been removed." });
   };
-  
+
+  const handleClearSummaries = () => {
+    clearAllSummaries();
+    toast({ title: "Summaries Cleared", description: "All summaries have been removed." });
+  }
+
   const handleClearAllData = () => {
-    clearAllData();
-    toast({ title: "All Data Cleared", description: "All content items and theme suggestions have been removed." });
+    clearAllData(); // This now also clears funcionarios and active funcionarios
+    toast({ title: "All Data Cleared", description: "All content items, theme suggestions, summaries, and training data (funcionários & active status) have been removed." });
   };
 
 
@@ -100,6 +105,7 @@ export function SettingsFormClient() {
                     <FormControl>
                       <Input id="openAIKey" type="password" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
                     </FormControl>
+                    <FormDescription>Your OpenAI API Key. This is stored locally in your browser and is required for AI features if not set in the .env file.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -114,7 +120,7 @@ export function SettingsFormClient() {
                       <Input id="openAIAgentId" placeholder="asst_xxxxxxxxxxxxxxxxxxxxxx" {...field} />
                     </FormControl>
                     <FormDescription>
-                      If you have a custom OpenAI Assistant ID, enter it here. Otherwise, default models will be used.
+                      If you have a custom OpenAI Assistant ID, enter it here. This will be prioritized if set in your .env file for server-side AI flows.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -211,7 +217,29 @@ export function SettingsFormClient() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          
+
+           <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="w-full sm:w-auto">
+                <Trash2 className="mr-2 h-4 w-4" /> Clear All Summaries
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete all your saved summaries.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleClearSummaries} className="bg-destructive hover:bg-destructive/90">
+                  Yes, delete all summaries
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" className="w-full sm:w-auto">
@@ -222,7 +250,7 @@ export function SettingsFormClient() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete ALL your content items and theme suggestions. App settings (like API keys) will NOT be cleared.
+                  This action cannot be undone. This will permanently delete ALL your content items, theme suggestions, summaries, and training data (funcionários and their active status). App settings (like API keys) will NOT be cleared.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -243,3 +271,4 @@ export function SettingsFormClient() {
     </div>
   );
 }
+

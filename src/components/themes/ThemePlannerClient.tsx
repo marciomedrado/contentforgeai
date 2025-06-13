@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { AppSettings, ThemeSuggestion, ManualReferenceItem } from '@/lib/types';
+import type { AppSettings, ThemeSuggestion, ManualReferenceItem, Funcionario } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,12 +24,13 @@ import {
   deleteManualReferenceFromTheme,
   updateThemeWithSuggestedKeywords,
   deleteKeywordFromTheme,
+  getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
-import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon } from 'lucide-react';
-import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE } from '@/lib/constants';
+import { Loader2, Sparkles, Lightbulb, PlusCircle, Trash2, AlertTriangle, FileText, Tags, XIcon, Info, Copy, BrainCircuit } from 'lucide-react';
+import { THEMES_STORAGE_KEY, SETTINGS_STORAGE_KEY, DEFAULT_OUTPUT_LANGUAGE, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label as UiLabel } from "@/components/ui/label"; // Renamed to avoid conflict
+import { Label as UiLabel } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +52,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
 
 
 const themePlannerSchema = z.object({
@@ -75,7 +77,7 @@ export function ThemePlannerClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoadingThemes, setIsLoadingThemes] = useState(false);
-  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences' | 'suggestedKeywords'>[]>([]);
+  const [generatedThemesList, setGeneratedThemesList] = useState<Omit<ThemeSuggestion, 'id' | 'generatedAt' | 'userInputTopic' | 'manualReferences'| 'suggestedKeywords'>[]>([]);
 
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(getStoredSettings());
   const [storedThemeSuggestions, setStoredThemeSuggestions] = useState<ThemeSuggestion[]>([]);
@@ -84,7 +86,9 @@ export function ThemePlannerClient() {
   const [selectedManualReferences, setSelectedManualReferences] = useState<Record<string, Record<string, boolean>>>({});
   const [currentThemeForManualRef, setCurrentThemeForManualRef] = useState<ThemeSuggestion | null>(null);
 
-  const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null); // themeId or null
+  const [isLoadingSuggestedKeywords, setIsLoadingSuggestedKeywords] = useState<string | null>(null);
+
+  const [activeThemePlannerFuncionarioName, setActiveThemePlannerFuncionarioName] = useState<string | null>(null);
 
   const manualRefForm = useForm<AddManualRefFormData>({
     resolver: zodResolver(addManualRefSchema),
@@ -96,21 +100,28 @@ export function ThemePlannerClient() {
     setStoredThemeSuggestions(getStoredThemeSuggestions());
   }, []);
 
-  const refreshSettings = useCallback(() => {
+  const refreshSettingsAndActiveFuncionarios = useCallback(() => {
     setCurrentSettings(getStoredSettings());
+    const tpFunc = getActiveFuncionarioForDepartamento("ThemePlanner");
+    setActiveThemePlannerFuncionarioName(tpFunc ? tpFunc.nome : null);
   }, []);
 
   useEffect(() => {
-    refreshSettings();
+    refreshSettingsAndActiveFuncionarios();
     refreshStoredThemes();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === THEMES_STORAGE_KEY) refreshStoredThemes();
-      if (event.key === SETTINGS_STORAGE_KEY) refreshSettings();
+      if (event.key === SETTINGS_STORAGE_KEY ||
+          event.key === FUNCIONARIOS_STORAGE_KEY ||
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY
+          ) {
+        refreshSettingsAndActiveFuncionarios();
+      }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshStoredThemes, refreshSettings]);
+  }, [refreshStoredThemes, refreshSettingsAndActiveFuncionarios]);
 
   const form = useForm<ThemePlannerFormData>({
     resolver: zodResolver(themePlannerSchema),
@@ -118,25 +129,21 @@ export function ThemePlannerClient() {
   });
 
   const onThemeSuggestSubmit: SubmitHandler<ThemePlannerFormData> = async (data) => {
-    const freshSettings = getStoredSettings(); // Fetch fresh settings
-    if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) { // Check .env if key not in localStorage settings
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or ensure it's in your .env file.", variant: "destructive" });
-      return;
-    }
-    setCurrentSettings(freshSettings);
     setIsLoadingThemes(true);
     setCurrentUserInputTopic(data.topic);
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
     try {
       const result = await suggestThemes({
         topic: data.topic,
         numSuggestions: data.numSuggestions,
-        outputLanguage: freshSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+        outputLanguage: currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE,
+        customInstructions: activeThemePlannerFuncionario?.instrucoes,
       });
       setGeneratedThemesList(result.themes);
       toast({ title: "Themes Suggested!", description: "AI has generated theme ideas for your topic." });
     } catch (error) {
       console.error("Theme suggestion error:", error);
-      toast({ title: "AI Error", description: "Failed to suggest themes. Check console for details.", variant: "destructive" });
+      toast({ title: "AI Error", description: `Failed to suggest themes. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
       setGeneratedThemesList([]);
     }
     setIsLoadingThemes(false);
@@ -149,7 +156,7 @@ export function ThemePlannerClient() {
       title: theme.title,
       description: theme.description,
       keywords: theme.keywords,
-      suggestedKeywords: [], // Initialize as empty
+      suggestedKeywords: [],
       generatedAt: new Date().toISOString(),
       manualReferences: [],
     };
@@ -183,6 +190,8 @@ export function ThemePlannerClient() {
     refreshStoredThemes();
     toast({ title: "Manual Reference Added", description: "Your reference has been saved."});
     manualRefForm.reset({ title: "", content: ""});
+    const closeButton = document.getElementById(`dialog-close-manual-ref-${currentThemeForManualRef.id}`);
+    closeButton?.click();
     setCurrentThemeForManualRef(null);
   };
 
@@ -206,24 +215,21 @@ export function ThemePlannerClient() {
   };
 
   const handleSuggestKeywordsForTheme = async (theme: ThemeSuggestion) => {
-    const freshSettings = getStoredSettings();
-     if (!freshSettings?.openAIKey && !process.env.OPENAI_API_KEY) {
-      toast({ title: "API Key Missing", description: "Please configure your OpenAI API key in Settings or .env.", variant: "destructive" });
-      return;
-    }
     setIsLoadingSuggestedKeywords(theme.id);
+    const activeThemePlannerFuncionario = getActiveFuncionarioForDepartamento("ThemePlanner");
     try {
       const result = await suggestHashtags({
         text: `${theme.title} ${theme.description}`,
         platform: 'general',
+        customInstructions: activeThemePlannerFuncionario?.instrucoes,
       });
       const processedKeywords = result.hashtags.map(kw => kw.startsWith('#') ? kw.substring(1) : kw);
       updateThemeWithSuggestedKeywords(theme.id, processedKeywords);
-      refreshStoredThemes(); // Refresh to show newly saved keywords
+      refreshStoredThemes();
       toast({ title: "Keywords Suggested!", description: "AI has suggested and saved additional keywords/search terms." });
     } catch (error) {
       console.error("Keyword suggestion error:", error);
-      toast({ title: "AI Error", description: "Failed to suggest keywords. Check console for details.", variant: "destructive" });
+      toast({ title: "AI Error", description: `Failed to suggest keywords. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     setIsLoadingSuggestedKeywords(null);
   };
@@ -234,6 +240,20 @@ export function ThemePlannerClient() {
     toast({ title: "Keyword Deleted", description: `Keyword "${keywordToDelete}" has been removed.`});
   }, [refreshStoredThemes, toast]);
 
+  const handleCopyText = (textToCopy: string, successMessage: string) => {
+    if (!textToCopy) {
+        toast({ title: "Nada para Copiar", description: "Não há texto para copiar.", variant: "destructive" });
+        return;
+    }
+    navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+            toast({ title: "Copiado!", description: successMessage });
+        })
+        .catch(err => {
+            console.error("Falha ao copiar: ", err);
+            toast({ title: "Falha ao Copiar", description: "Não foi possível copiar o texto.", variant: "destructive" });
+        });
+  };
 
   const handleCreateContentFromTheme = (theme: ThemeSuggestion) => {
     const selectedManualRefsContents = (theme.manualReferences || [])
@@ -258,6 +278,15 @@ export function ThemePlannerClient() {
         <CardHeader>
           <CardTitle>Proactive Theme Planner</CardTitle>
           <CardDescription>Let AI help you brainstorm content themes. Enter a general topic and get suggestions for titles, descriptions, and keywords.</CardDescription>
+            <Alert variant="default" className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700 text-xs py-2">
+                <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDesc className="text-blue-700 dark:text-blue-300">
+                {activeThemePlannerFuncionarioName
+                    ? <>Planejamento de temas e sugestões de palavras-chave usarão instruções de: <span className="font-semibold">{activeThemePlannerFuncionarioName}</span>.</>
+                    : "Nenhum funcionário personalizado ativo para Planejador de Temas. Usando prompt padrão do sistema."}
+                {" (Configurado em Treinamento)"}
+                </AlertDesc>
+            </Alert>
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onThemeSuggestSubmit)}>
@@ -389,13 +418,24 @@ export function ThemePlannerClient() {
                   </div>
                 </div>
 
-                {/* AI Keyword/Hashtag Ideas Section */}
                 <div className="my-4 p-3 border-t border-dashed">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
                     <h5 className="text-md font-semibold flex items-center"><Tags className="mr-2 h-5 w-5 text-primary"/>AI Keyword/Search Term Ideas</h5>
-                    <Button variant="outline" size="sm" onClick={() => handleSuggestKeywordsForTheme(suggestion)} disabled={isLoadingSuggestedKeywords === suggestion.id}>
-                      {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Terms
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleSuggestKeywordsForTheme(suggestion)} disabled={isLoadingSuggestedKeywords === suggestion.id}>
+                        {isLoadingSuggestedKeywords === suggestion.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />} Suggest Terms
+                        </Button>
+                        {suggestion.suggestedKeywords && suggestion.suggestedKeywords.length > 0 && (
+                             <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCopyText(suggestion.suggestedKeywords!.join(', '), "Termos sugeridos copiados!")}
+                            >
+                                <Copy className="mr-2 h-4 w-4" /> Copiar Termos
+                            </Button>
+                        )}
+                    </div>
                   </div>
                   {suggestion.suggestedKeywords && suggestion.suggestedKeywords.length > 0 ? (
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -418,18 +458,16 @@ export function ThemePlannerClient() {
                   {isLoadingSuggestedKeywords === suggestion.id && <p className="text-xs text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Generating keywords...</p>}
                 </div>
 
-
-                {/* Manual References Section */}
                 <div className="my-4 p-3 border-t border-dashed">
                    <div className="flex justify-between items-center mb-2">
                     <h5 className="text-md font-semibold flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Manual Notes/References</h5>
-                    <Dialog onOpenChange={(isOpen) => { if (!isOpen) setCurrentThemeForManualRef(null); }}>
+                    <Dialog onOpenChange={(isOpen) => { if (!isOpen) { setCurrentThemeForManualRef(null); manualRefForm.reset(); } }}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" onClick={() => handleOpenManualRefModal(suggestion)}>
                           <PlusCircle className="mr-2 h-4 w-4" /> Add Note
                         </Button>
                       </DialogTrigger>
-                      {currentThemeForManualRef?.id === suggestion.id && (
+                      {currentThemeForManualRef?.id === suggestion.id && ( 
                         <DialogContent>
                           <DialogHeader>
                             <DialogTitle>Add Manual Note for "{currentThemeForManualRef.title}"</DialogTitle>
@@ -460,7 +498,7 @@ export function ThemePlannerClient() {
                                 )}
                               />
                               <DialogFooter>
-                                 <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
+                                 <DialogClose asChild id={`dialog-close-manual-ref-${suggestion.id}`}><Button type="button" variant="ghost">Cancel</Button></DialogClose>
                                 <Button type="submit">Save Note</Button>
                               </DialogFooter>
                             </form>
@@ -510,7 +548,6 @@ export function ThemePlannerClient() {
                      <p className="text-xs text-muted-foreground">No manual notes added yet for this theme.</p>
                   )}
                 </div>
-
               </Card>
             ))}
           </CardContent>
@@ -520,3 +557,4 @@ export function ThemePlannerClient() {
   );
 }
 
+    

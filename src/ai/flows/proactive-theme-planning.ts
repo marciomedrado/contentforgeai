@@ -19,6 +19,7 @@ const SuggestThemesInputSchema = z.object({
     .default(5)
     .describe('The number of theme suggestions to generate.'),
   outputLanguage: z.string().optional().default(DEFAULT_OUTPUT_LANGUAGE).describe('The desired output language for the themes (e.g., "en", "pt", "es").'),
+  customInstructions: z.string().optional().describe('Additional custom instructions for the AI to follow, from a designated "Funcionario".'),
 });
 export type SuggestThemesInput = z.infer<typeof SuggestThemesInputSchema>;
 
@@ -37,11 +38,21 @@ export async function suggestThemes(input: SuggestThemesInput): Promise<SuggestT
   return suggestThemesFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'suggestThemesPrompt',
+// This prompt is for Gemini if OpenAI Agent is not used
+const geminiPrompt = ai.definePrompt({
+  name: 'suggestThemesGeminiPrompt',
   input: {schema: SuggestThemesInputSchema},
   output: {schema: SuggestThemesOutputSchema},
-  prompt: `You are an AI content planning assistant. Generate {{numSuggestions}} content theme suggestions for the general topic: {{{topic}}}.
+  prompt: `
+{{#if customInstructions}}
+Prioritize these User-Provided Instructions:
+---
+{{{customInstructions}}}
+---
+When generating themes, ensure you adhere to these instructions above all else, while still fulfilling the core task.
+{{/if}}
+
+You are an AI content planning assistant. Generate {{numSuggestions}} content theme suggestions for the general topic: {{{topic}}}.
 All output (titles, descriptions, keywords) MUST be in the language: {{{outputLanguage}}}.
 
 Each suggestion must include:
@@ -79,13 +90,77 @@ const suggestThemesFlow = ai.defineFlow(
   },
   async (input: SuggestThemesInput) => {
     const lang = input.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
-    const promptInput = {
-        ...input,
+    const agentId = process.env.OPENAI_AGENT_ID;
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (agentId && apiKey) {
+      console.log(`Using OpenAI Agent ${agentId} for theme suggestions.`);
+      const assistantInput = {
+        topic: input.topic,
+        numSuggestions: input.numSuggestions,
         outputLanguage: lang,
-    };
-    const {output} = await prompt(promptInput);
+        customInstructions: input.customInstructions,
+        desiredOutputFormat: "A JSON object with a 'themes' array. Each theme object must have 'title' (string), 'description' (string, 20-50 words), and 'keywords' (array of 5 strings). All text in the specified outputLanguage."
+      };
+
+      try {
+        const {output} = await ai.runAssistant({
+          assistantId: agentId,
+          input: assistantInput,
+          instructions: `You are an AI content planning assistant. Generate content theme suggestions based on the provided input.
+          The user has provided:
+          - Topic: ${assistantInput.topic}
+          - Number of suggestions: ${assistantInput.numSuggestions}
+          - Output language: ${assistantInput.outputLanguage}
+          ${assistantInput.customInstructions ? `- Custom Instructions (Prioritize these): ${assistantInput.customInstructions}` : ''}
+
+          Your response MUST be a single, valid JSON object strictly conforming to the following structure:
+          {
+            "themes": [
+              {
+                "title": "string (in ${assistantInput.outputLanguage})",
+                "description": "string, 20-50 words (in ${assistantInput.outputLanguage})",
+                "keywords": ["string", "string", "string", "string", "string"] // (all 5 keywords in ${assistantInput.outputLanguage})
+              }
+              // ... (repeat for numSuggestions)
+            ]
+          }
+          Ensure all text content (titles, descriptions, keywords) is in the specified outputLanguage.
+          Do NOT include any other text, explanations, or markdown formatting outside of this JSON structure.`,
+        });
+
+        if (typeof output === 'string') {
+          const parsedOutput = JSON.parse(output as string);
+          // Validate with Zod schema
+          const validationResult = SuggestThemesOutputSchema.safeParse(parsedOutput);
+          if (validationResult.success) {
+            return validationResult.data;
+          } else {
+            console.error("OpenAI Agent output failed Zod validation:", validationResult.error);
+            throw new Error(`OpenAI Agent output format error: ${validationResult.error.message}`);
+          }
+        } else if (typeof output === 'object' && output !== null) {
+           const validationResult = SuggestThemesOutputSchema.safeParse(output);
+           if (validationResult.success) {
+            return validationResult.data;
+          } else {
+            console.error("OpenAI Agent object output failed Zod validation:", validationResult.error);
+            throw new Error(`OpenAI Agent object output format error: ${validationResult.error.message}`);
+          }
+        }
+        throw new Error("OpenAI Agent returned an unexpected output type.");
+      } catch (e) {
+         console.error("Error running OpenAI assistant for theme suggestions, falling back to Gemini:", e);
+         // Fallback to Gemini if assistant fails
+      }
+    }
+
+    // Fallback to Gemini
+    console.log("Using Gemini prompt for theme suggestions.");
+    const promptInput = { ...input, outputLanguage: lang };
+    const {output} = await geminiPrompt(promptInput);
     if (!output || !output.themes) {
-      throw new Error("AI failed to generate themes or the output was not in the expected format.");
+      throw new Error("AI (Gemini) failed to generate themes or the output was not in the expected format.");
     }
     return output;
   }

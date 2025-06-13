@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useForm, SubmitHandler, Controller } from 'react-hook-form';
+import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -13,19 +13,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { summarizeText as summarizeTextFlow } from '@/ai/flows/summarize-text-flow';
-import { 
-  getStoredSummaries, 
-  addSummarizationItem, 
-  updateSummarizationItem, 
-  deleteSummarizationItemById, 
+import {
+  getStoredSummaries,
+  addSummarizationItem,
+  updateSummarizationItem,
+  deleteSummarizationItemById,
   clearAllSummaries,
   getStoredThemeSuggestions,
   addManualReferenceToTheme,
-  getStoredSettings // Added missing import
+  getStoredSettings,
+  getActiveFuncionarioForDepartamento,
 } from '@/lib/storageService';
-import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings } from '@/lib/types';
-import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle } from 'lucide-react'; // Renamed SettingsIcon to avoid conflict
-import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/constants';
+import type { SummarizationItem, ThemeSuggestion, ManualReferenceItem, AppSettings, Funcionario } from '@/lib/types';
+import { Loader2, Sparkles, Copy, Save, Trash2, Edit3, Send, SettingsIcon as SettingsIconLucide, XIcon, AlertTriangle, Eye, Info, BrainCircuit } from 'lucide-react';
+import { LANGUAGE_OPTIONS, DEFAULT_OUTPUT_LANGUAGE, SUMMARIES_STORAGE_KEY, SETTINGS_STORAGE_KEY, FUNCIONARIOS_STORAGE_KEY, ACTIVE_FUNCIONARIOS_STORAGE_KEY } from '@/lib/constants';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -49,6 +50,8 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
+
 
 const summarizerFormSchema = z.object({
   inputText: z.string().min(50, "Text must be at least 50 characters long."),
@@ -69,6 +72,11 @@ export function SummarizerClient() {
   const [selectedThemeIdForSummary, setSelectedThemeIdForSummary] = useState<string | null>(null);
   const [currentSummaryToSend, setCurrentSummaryToSend] = useState<SummarizationItem | null>(null);
 
+  const [isViewContentModalOpen, setIsViewContentModalOpen] = useState(false);
+  const [summaryToView, setSummaryToView] = useState<SummarizationItem | null>(null);
+  
+  const [activeSummarizerFuncionarioName, setActiveSummarizerFuncionarioName] = useState<string | null>(null);
+
   const form = useForm<SummarizerFormData>({
     resolver: zodResolver(summarizerFormSchema),
     defaultValues: {
@@ -80,47 +88,50 @@ export function SummarizerClient() {
   const refreshSummaries = useCallback(() => {
     setSavedSummaries(getStoredSummaries());
   }, []);
-  
-  const getCurrentSettings = useCallback(() => {
+
+  const refreshSettingsAndActiveFuncionario = useCallback(() => {
     if (typeof window !== 'undefined') {
-      return getStoredSettings();
+      const currentSettings = getStoredSettings();
+      form.setValue('outputLanguage', currentSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
+      const summarizerFunc = getActiveFuncionarioForDepartamento("Summarizer");
+      setActiveSummarizerFuncionarioName(summarizerFunc ? summarizerFunc.nome : null);
     }
-    return { outputLanguage: DEFAULT_OUTPUT_LANGUAGE } as AppSettings;
-  }, []);
+  }, [form]);
 
 
   useEffect(() => {
     refreshSummaries();
-    const currentLanguage = getCurrentSettings()?.outputLanguage || DEFAULT_OUTPUT_LANGUAGE;
-    // form.reset({ inputText: '', outputLanguage: currentLanguage }); // Keep this reset for later if needed
-
+    refreshSettingsAndActiveFuncionario();
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === SUMMARIES_STORAGE_KEY) {
         refreshSummaries();
       }
-      if (event.key === SETTINGS_STORAGE_KEY) { // Ensure this key matches your actual settings key
-         const newSettings = getCurrentSettings();
-         form.setValue('outputLanguage', newSettings.outputLanguage || DEFAULT_OUTPUT_LANGUAGE);
+      if (event.key === SETTINGS_STORAGE_KEY || 
+          event.key === FUNCIONARIOS_STORAGE_KEY || 
+          event.key === ACTIVE_FUNCIONARIOS_STORAGE_KEY) {
+         refreshSettingsAndActiveFuncionario();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshSummaries, form, getCurrentSettings]);
+  }, [refreshSummaries, refreshSettingsAndActiveFuncionario]);
 
   const onSummarizeSubmit: SubmitHandler<SummarizerFormData> = async (data) => {
     setIsLoading(true);
     setSummaryOutput('');
+    const activeSummarizerFuncionario = getActiveFuncionarioForDepartamento("Summarizer");
     try {
       const result = await summarizeTextFlow({
         textToSummarize: data.inputText,
         outputLanguage: data.outputLanguage,
+        customInstructions: activeSummarizerFuncionario?.instrucoes,
       });
       setSummaryOutput(result.summary);
       toast({ title: "Summary Generated!", description: "AI has summarized your text." });
     } catch (error) {
       console.error("Summarization error:", error);
-      toast({ title: "AI Error", description: "Failed to summarize text. Check console for details.", variant: "destructive" });
+      toast({ title: "AI Error", description: `Failed to summarize text. Error: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
     }
     setIsLoading(false);
   };
@@ -138,7 +149,7 @@ export function SummarizerClient() {
         inputText,
         summaryOutput,
         language: outputLanguage,
-        createdAt: savedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(), // Keep original createdAt
+        createdAt: savedSummaries.find(s => s.id === editingSummaryId)?.createdAt || new Date().toISOString(),
       };
       updateSummarizationItem(updatedItem);
       toast({ title: "Summary Updated!", description: "Your summary has been updated." });
@@ -155,8 +166,8 @@ export function SummarizerClient() {
       toast({ title: "Summary Saved!", description: "Your summary has been saved." });
     }
     refreshSummaries();
-    form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') }); 
-    setSummaryOutput(''); 
+    form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
+    setSummaryOutput('');
   };
 
   const handleEditSummary = (summary: SummarizationItem) => {
@@ -172,7 +183,7 @@ export function SummarizerClient() {
   const handleDeleteSummary = (id: string) => {
     deleteSummarizationItemById(id);
     refreshSummaries();
-    if (editingSummaryId === id) { 
+    if (editingSummaryId === id) {
       setEditingSummaryId(null);
       form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
       setSummaryOutput('');
@@ -192,7 +203,7 @@ export function SummarizerClient() {
         toast({ title: "Copy Failed", description: "Could not copy summary.", variant: "destructive" });
       });
   };
-  
+
   const handleClearAll = () => {
     clearAllSummaries();
     refreshSummaries();
@@ -205,7 +216,7 @@ export function SummarizerClient() {
   const handleOpenSendToThemeModal = (summary: SummarizationItem) => {
     setCurrentSummaryToSend(summary);
     setAllThemeSuggestions(getStoredThemeSuggestions());
-    setSelectedThemeIdForSummary(null); 
+    setSelectedThemeIdForSummary(null);
     setIsSendToThemeModalOpen(true);
   };
 
@@ -234,6 +245,11 @@ export function SummarizerClient() {
     setCurrentSummaryToSend(null);
   };
 
+  const handleOpenViewContentModal = (summary: SummarizationItem) => {
+    setSummaryToView(summary);
+    setIsViewContentModalOpen(true);
+  };
+
 
   return (
     <div className="space-y-8">
@@ -241,6 +257,15 @@ export function SummarizerClient() {
         <CardHeader>
           <CardTitle>Text Summarizer</CardTitle>
           <CardDescription>Input your text below and select the desired language for the summary. The AI will generate a concise overview.</CardDescription>
+            <Alert variant="default" className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700 text-xs py-2">
+              <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <AlertDesc className="text-blue-700 dark:text-blue-300">
+                {activeSummarizerFuncionarioName
+                  ? <>Sumarização usará instruções de: <span className="font-semibold">{activeSummarizerFuncionarioName}</span>.</>
+                  : "Nenhum funcionário personalizado ativo para Sumarizador. Usando prompt padrão do sistema."}
+                {" (Configurado em Treinamento)"}
+              </AlertDesc>
+            </Alert>
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSummarizeSubmit)}>
@@ -252,7 +277,7 @@ export function SummarizerClient() {
                   <FormItem>
                     <FormLabel htmlFor="inputText">Text to Summarize</FormLabel>
                     <FormControl>
-                      <Textarea id="inputText" placeholder="Paste your text here (min. 50 characters)..." {...field} rows={10} />
+                      <Textarea id="inputText" placeholder="Paste your text here (min. 50 characters)..." {...field} rows={10} suppressHydrationWarning={true}/>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -304,7 +329,7 @@ export function SummarizerClient() {
         </Form>
       </Card>
 
-      {summaryOutput && !editingSummaryId && ( 
+      {summaryOutput && !editingSummaryId && (
         <Card>
           <CardHeader>
             <CardTitle>Generated Summary</CardTitle>
@@ -316,8 +341,8 @@ export function SummarizerClient() {
           </CardContent>
         </Card>
       )}
-      
-      {editingSummaryId && summaryOutput && ( 
+
+      {editingSummaryId && summaryOutput && (
         <Card className="border-primary">
           <CardHeader>
             <CardTitle className="text-primary flex items-center">
@@ -325,17 +350,23 @@ export function SummarizerClient() {
             </CardTitle>
             <CardDescription>Modify the text or language above and click "Re-Summarize" or "Update Saved Summary".</CardDescription>
           </CardHeader>
-          <CardContent>
-             <FormLabel>Current Summary Output</FormLabel>
-            <ScrollArea className="h-[200px] w-full rounded-md border p-4 bg-muted/30">
-              <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{summaryOutput}</ReactMarkdown>
-            </ScrollArea>
+          <CardContent className="space-y-3">
+            <Label htmlFor="currentSummaryOutputTextarea">Current Summary Output</Label>
+            <Textarea
+                id="currentSummaryOutputTextarea"
+                value={summaryOutput}
+                onChange={(e) => setSummaryOutput(e.target.value)}
+                rows={8}
+                className="w-full rounded-md border p-4 bg-muted/30 resize-none"
+                placeholder="Edit summary here..."
+                suppressHydrationWarning={true}
+            />
           </CardContent>
             <CardFooter className="flex justify-end">
-                 <Button variant="ghost" onClick={() => { 
-                     setEditingSummaryId(null); 
-                     form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') }); 
-                     setSummaryOutput(''); 
+                 <Button variant="ghost" onClick={() => {
+                     setEditingSummaryId(null);
+                     form.reset({ inputText: '', outputLanguage: form.getValues('outputLanguage') });
+                     setSummaryOutput('');
                  }}>
                     <XIcon className="mr-2 h-4 w-4"/> Cancel Edit
                 </Button>
@@ -387,6 +418,9 @@ export function SummarizerClient() {
                   </ScrollArea>
                 </div>
                 <div className="flex flex-wrap gap-2 justify-end">
+                  <Button variant="outline" size="sm" onClick={() => handleOpenViewContentModal(item)}>
+                    <Eye className="mr-1 h-3 w-3" /> Ver
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleEditSummary(item)}>
                     <Edit3 className="mr-1 h-3 w-3" /> Edit
                   </Button>
@@ -422,7 +456,6 @@ export function SummarizerClient() {
         </Card>
       )}
 
-      {/* Send to Theme Modal */}
       <Dialog open={isSendToThemeModalOpen} onOpenChange={setIsSendToThemeModalOpen}>
         <DialogContent>
           <DialogHeader>
@@ -462,6 +495,41 @@ export function SummarizerClient() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isViewContentModalOpen} onOpenChange={setIsViewContentModalOpen}>
+        <DialogContent className="sm:max-w-[600px] md:max-w-[750px] lg:max-w-[900px] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>View Full Content</DialogTitle>
+            {summaryToView && (
+                <DialogDescription>
+                    Viewing original text and summary for item saved on {new Date(summaryToView.createdAt).toLocaleDateString()} in {LANGUAGE_OPTIONS.find(l=>l.value === summaryToView.language)?.label || summaryToView.language}.
+                </DialogDescription>
+            )}
+          </DialogHeader>
+          {summaryToView && (
+            <div className="grid grid-rows-2 gap-4 flex-1 overflow-y-hidden py-2">
+              <div className="flex flex-col overflow-y-hidden">
+                <Label className="mb-1 font-semibold">Original Text</Label>
+                <ScrollArea className="flex-1 rounded-md border p-3 bg-muted/20">
+                  <pre className="whitespace-pre-wrap text-sm">{summaryToView.inputText}</pre>
+                </ScrollArea>
+              </div>
+              <div className="flex flex-col overflow-y-hidden">
+                <Label className="mb-1 font-semibold">Generated Summary</Label>
+                <ScrollArea className="flex-1 rounded-md border p-3 bg-muted/20">
+                  <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{summaryToView.summaryOutput}</ReactMarkdown>
+                </ScrollArea>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+    

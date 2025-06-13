@@ -1,17 +1,18 @@
 
-import type { Platform } from './types';
+import type { Platform, Departamento } from './types';
 
 export const APP_NAME = "ContentForge AI";
 
 export const PLATFORMS: Platform[] = ["Wordpress", "Instagram", "Facebook"];
 
-export const DEFAULT_NUMBER_OF_IMAGES = 1; 
+export const DEFAULT_NUMBER_OF_IMAGES = 1;
 
 export const NAV_LINKS = [
   { href: "/", label: "Dashboard", iconName: "LayoutDashboard" },
-  { href: "/content/new", label: "Create Content", iconName: "PlusCircle" },
   { href: "/themes", label: "Theme Planner", iconName: "Lightbulb" },
   { href: "/summarizer", label: "Summarizer", iconName: "FileText" },
+  { href: "/content/new", label: "Create Content", iconName: "PlusCircle" },
+  { href: "/training", label: "Treinamento", iconName: "BrainCircuit" },
   { href: "/settings", label: "Settings", iconName: "SettingsIcon" },
 ];
 
@@ -38,9 +39,18 @@ export const LANGUAGE_OPTIONS: { value: string, label: string }[] = [
 
 export const DEFAULT_OUTPUT_LANGUAGE = 'pt';
 
+export const DEPARTAMENTOS: { value: Departamento; label: string }[] = [
+  { value: "ContentCreation", label: "Criação de Conteúdo" },
+  { value: "Summarizer", label: "Sumarizador" },
+  { value: "ThemePlanner", label: "Planejador de Temas (e Sugestões de Palavra-chave/Hashtag)" },
+];
+
 // Storage Keys
 export const CONTENT_STORAGE_KEY = 'contentForgeAi_contentItems';
 export const SETTINGS_STORAGE_KEY = 'contentForgeAi_appSettings';
 export const THEMES_STORAGE_KEY = 'contentForgeAi_themeSuggestions';
 export const SUMMARIES_STORAGE_KEY = 'contentForgeAi_summaries';
 export const REFINEMENT_PROMPTS_STORAGE_KEY = 'contentForgeAi_refinementPrompts';
+export const FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_funcionarios';
+export const ACTIVE_FUNCIONARIOS_STORAGE_KEY = 'contentForgeAi_activeFuncionarios';
+
