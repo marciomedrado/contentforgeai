@@ -26,7 +26,9 @@ import {
   setFuncionarioStatus,
   getEmpresas, 
   getEmpresaById,
+  getFuncionarioById,
 } from '@/lib/storageService';
+import { generateImage as generateImageFlow } from '@/ai/flows/generate-image-flow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,7 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Label as UiLabel } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2, Filter } from 'lucide-react';
+import { Save, Trash2, Users, BrainCircuit, AlertTriangle, Settings2, Edit3, Coffee, PlayCircle, Briefcase, Copy as CloneIcon, Building, Building2, Filter, UserCircle, Sparkles, Bot } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +49,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle as DialogTitleUi,
+  DialogDescription as DialogDescriptionUi,
+  DialogFooter as DialogFooterUi,
+  DialogTrigger as DialogTriggerUi,
+  DialogClose as DialogCloseUi,
+} from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
 import { useActiveEmpresa } from '@/hooks/useActiveEmpresa';
 import Image from 'next/image';
@@ -58,6 +70,7 @@ const funcionarioFormSchema = z.object({
     required_error: "Por favor, selecione um departamento.",
   }),
   empresaId: z.string().optional(),
+  avatarUrl: z.string().url("Por favor, insira uma URL válida para o avatar.").optional().or(z.literal('')),
 });
 
 type FuncionarioFormData = z.infer<typeof funcionarioFormSchema>;
@@ -75,6 +88,11 @@ export function TrainingClient() {
   const [currentActiveEmpresaDetails, setCurrentActiveEmpresaDetails] = useState<Empresa | null>(null);
   const [funcionarioListFilter, setFuncionarioListFilter] = useState<string>(FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE);
 
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [avatarGenPrompt, setAvatarGenPrompt] = useState('');
+  const [generatedAvatarDataUri, setGeneratedAvatarDataUri] = useState<string | null>(null);
+  const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
+
 
   const form = useForm<FuncionarioFormData>({
     resolver: zodResolver(funcionarioFormSchema),
@@ -83,8 +101,11 @@ export function TrainingClient() {
       instrucoes: '',
       departamento: undefined,
       empresaId: SEM_EMPRESA_VALUE,
+      avatarUrl: '',
     },
   });
+  const currentFormAvatarUrl = form.watch('avatarUrl');
+
 
   const refreshAllData = useCallback(() => {
     setAllFuncionariosUnfilteredStorage(getFuncionariosUnfiltered());
@@ -115,7 +136,7 @@ export function TrainingClient() {
         refreshAllData();
       }
       if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
-        refreshAllData(); // Refresh all because funcionarios might change company or availability
+        refreshAllData(); 
         refreshEmpresaDetails();
       }
     };
@@ -124,10 +145,9 @@ export function TrainingClient() {
   }, [refreshAllData, refreshEmpresaDetails]);
 
   useEffect(() => {
-    // Set initial filter based on global company context
     if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
       setFuncionarioListFilter(FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE);
-      if (!editingFuncionario) { // Only set default empresaId if not editing
+      if (!editingFuncionario) { 
         form.setValue('empresaId', activeEmpresaIdGlobal);
       }
     } else {
@@ -148,6 +168,7 @@ export function TrainingClient() {
       instrucoes: data.instrucoes,
       departamento: data.departamento as Departamento,
       empresaId: effectiveEmpresaId,
+      avatarUrl: data.avatarUrl || undefined,
       createdAt: editingFuncionario?.createdAt || new Date().toISOString(),
       status: editingFuncionario?.status || 'Active',
     };
@@ -158,7 +179,7 @@ export function TrainingClient() {
       description: `O funcionário "${data.nome}" foi salvo.`,
     });
     const defaultEmpresaIdForReset = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
-    form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset });
+    form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset, avatarUrl: '' });
     setEditingFuncionario(null);
   };
 
@@ -169,6 +190,7 @@ export function TrainingClient() {
       instrucoes: funcionario.instrucoes,
       departamento: funcionario.departamento,
       empresaId: funcionario.empresaId || SEM_EMPRESA_VALUE,
+      avatarUrl: funcionario.avatarUrl || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -180,6 +202,7 @@ export function TrainingClient() {
       instrucoes: funcionario.instrucoes,
       departamento: funcionario.departamento,
       empresaId: funcionario.empresaId || SEM_EMPRESA_VALUE,
+      avatarUrl: funcionario.avatarUrl || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast({
@@ -196,7 +219,7 @@ export function TrainingClient() {
     });
     if (editingFuncionario?.id === id) {
         const defaultEmpresaIdForReset = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
-        form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset });
+        form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset, avatarUrl: '' });
         setEditingFuncionario(null);
     }
   };
@@ -204,7 +227,6 @@ export function TrainingClient() {
   const handleSetActive = (departamento: Departamento, funcionarioIdOrSpecialValue: string) => {
     const idToSet = funcionarioIdOrSpecialValue === NONE_VALUE_FOR_SELECT ? null : funcionarioIdOrSpecialValue;
     setActiveFuncionarioForDepartamento(departamento, idToSet); 
-    // Refresh is handled by storage event now
     toast({
       title: "Funcionário Ativo Atualizado!",
       description: `Configuração para ${DEPARTAMENTOS.find(d => d.value === departamento)?.label} atualizada.`,
@@ -229,10 +251,9 @@ export function TrainingClient() {
   const funcionariosDisponiveisParaDepartamento = useCallback((departamento: Departamento) => {
       let funcs = getFuncionariosUnfiltered().filter(f => 
           f.departamento === departamento && 
-          (f.status === 'Active' || !f.status) // Only active (or default status) funcionarios
+          (f.status === 'Active' || !f.status) 
       );
 
-      // If a global company context is active, filter by that company or "Available"
       if (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
           funcs = funcs.filter(f => !f.empresaId || f.empresaId === activeEmpresaIdGlobal);
       }
@@ -254,27 +275,24 @@ export function TrainingClient() {
     if (empresa) {
       return `Empresa: ${empresa.nome}`;
     }
-    // Fallback if currentActiveEmpresaDetails is not yet loaded for FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE
     if (funcionarioListFilter === FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE) {
         return "Empresa Atual e Disponíveis";
     }
-    return "Visão Geral (Todas e Disponíveis)"; // Default or fallback
+    return "Visão Geral (Todas e Disponíveis)";
   }, [funcionarioListFilter, currentActiveEmpresaDetails, allEmpresas]);
 
 
   const filteredFuncionarios = useMemo(() => {
     return allFuncionariosUnfilteredStorage.filter(f => {
       if (funcionarioListFilter === FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE) {
-        // Requires activeEmpresaIdGlobal to be set
         return (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && f.empresaId === activeEmpresaIdGlobal) || !f.empresaId;
       }
       if (funcionarioListFilter === FUNCIONARIO_FILTER_AVAILABLE_ONLY) {
         return !f.empresaId;
       }
       if (funcionarioListFilter === FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE) {
-        return true; // Show all
+        return true;
       }
-      // This means funcionarioListFilter is an empresaId
       return f.empresaId === funcionarioListFilter;
     });
   }, [allFuncionariosUnfilteredStorage, funcionarioListFilter, activeEmpresaIdGlobal]);
@@ -289,6 +307,32 @@ export function TrainingClient() {
     [filteredFuncionarios]
   );
 
+  const handleGenerateAvatar = async () => {
+    if (!avatarGenPrompt.trim()) {
+      toast({ title: "Prompt Necessário", description: "Por favor, insira um prompt para gerar o avatar.", variant: "destructive" });
+      return;
+    }
+    setIsGeneratingAvatar(true);
+    setGeneratedAvatarDataUri(null);
+    try {
+      const result = await generateImageFlow({ prompt: avatarGenPrompt });
+      setGeneratedAvatarDataUri(result.imageDataUri);
+      toast({ title: "Avatar Gerado!", description: "O avatar foi gerado pela IA." });
+    } catch (error) {
+      console.error("Erro ao gerar avatar:", error);
+      toast({ title: "Erro de Geração", description: `Falha ao gerar avatar: ${error instanceof Error ? error.message : String(error)}`, variant: "destructive" });
+    }
+    setIsGeneratingAvatar(false);
+  };
+
+  const handleUseGeneratedAvatar = () => {
+    if (generatedAvatarDataUri) {
+      form.setValue('avatarUrl', generatedAvatarDataUri);
+      setIsAvatarModalOpen(false);
+      setAvatarGenPrompt('');
+      setGeneratedAvatarDataUri(null);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -345,6 +389,84 @@ export function TrainingClient() {
                   </FormItem>
                 )}
               />
+               <FormField
+                control={form.control}
+                name="avatarUrl"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>URL do Avatar (Opcional)</FormLabel>
+                    <div className="flex items-center gap-2">
+                        <FormControl className="flex-grow">
+                            <Input placeholder="https://exemplo.com/avatar.png" {...field} />
+                        </FormControl>
+                        <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
+                            <DialogTriggerUi asChild>
+                                <Button type="button" variant="outline" size="sm" onClick={() => { setGeneratedAvatarDataUri(null); setAvatarGenPrompt(''); }}>
+                                    <Sparkles className="mr-2 h-4 w-4" /> Gerar com IA
+                                </Button>
+                            </DialogTriggerUi>
+                            <DialogContent className="sm:max-w-[500px]">
+                                <DialogHeader>
+                                <DialogTitleUi>Gerar Avatar com IA</DialogTitleUi>
+                                <DialogDescriptionUi>
+                                    Digite um prompt para a IA gerar uma imagem de avatar.
+                                </DialogDescriptionUi>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                    <Textarea
+                                        placeholder="Ex: Um robô amigável com um chapéu de escritor, estilo cartoon"
+                                        value={avatarGenPrompt}
+                                        onChange={(e) => setAvatarGenPrompt(e.target.value)}
+                                        rows={3}
+                                    />
+                                    <Button type="button" onClick={handleGenerateAvatar} disabled={isGeneratingAvatar || !avatarGenPrompt.trim()}>
+                                        {isGeneratingAvatar ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+                                        Gerar Imagem
+                                    </Button>
+                                    {isGeneratingAvatar && <p className="text-xs text-muted-foreground text-center">Gerando, aguarde...</p>}
+                                    {generatedAvatarDataUri && (
+                                        <div className="mt-2 space-y-2 flex flex-col items-center">
+                                            <p className="text-sm font-medium">Avatar Gerado:</p>
+                                            <Image
+                                                src={generatedAvatarDataUri}
+                                                alt="Avatar gerado por IA"
+                                                width={128}
+                                                height={128}
+                                                className="rounded-md border object-cover"
+                                                data-ai-hint="avatar person"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <DialogFooterUi>
+                                <DialogCloseUi asChild><Button type="button" variant="outline">Cancelar</Button></DialogCloseUi>
+                                <Button type="button" onClick={handleUseGeneratedAvatar} disabled={!generatedAvatarDataUri || isGeneratingAvatar}>
+                                    Usar esta Imagem
+                                </Button>
+                                </DialogFooterUi>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                    {currentFormAvatarUrl && (
+                        <div className="mt-2">
+                             <Image
+                                src={currentFormAvatarUrl}
+                                alt="Preview do Avatar"
+                                width={80}
+                                height={80}
+                                className="rounded-full border object-cover"
+                                data-ai-hint="avatar person"
+                                onError={(e) => {
+                                    e.currentTarget.src = 'https://placehold.co/80x80.png';
+                                    e.currentTarget.alt = 'Placeholder Avatar';
+                                }}
+                            />
+                        </div>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
@@ -394,7 +516,6 @@ export function TrainingClient() {
                             <SelectItem 
                               key={emp.id} 
                               value={emp.id}
-                              // Disable other companies if a global company context is active AND we are NOT editing that specific company's employee
                               disabled={!!activeEmpresaIdGlobal && 
                                         activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && 
                                         emp.id !== activeEmpresaIdGlobal &&
@@ -445,7 +566,7 @@ export function TrainingClient() {
                 <Button type="button" variant="outline" onClick={() => {
                   setEditingFuncionario(null);
                   const defaultEmpresaIdForReset = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
-                  form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset });
+                  form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaIdForReset, avatarUrl: '' });
                 }}>
                   Cancelar Edição
                 </Button>
@@ -473,6 +594,8 @@ export function TrainingClient() {
             {DEPARTAMENTOS.map(dep => {
                 const deptFuncionarios = funcionariosDisponiveisParaDepartamento(dep.value as Departamento);
                 const currentActiveIdForDep = activeFuncionarioIds[dep.value];
+                const activeFunc = currentActiveIdForDep ? getFuncionarioById(currentActiveIdForDep) : null;
+
                 return (
                     <div key={dep.value} className="space-y-2 p-3 border rounded-md shadow-sm">
                         <UiLabel className="font-semibold">{dep.label}</UiLabel>
@@ -481,14 +604,32 @@ export function TrainingClient() {
                             onValueChange={(funcionarioIdOrSpecialValue) => handleSetActive(dep.value as Departamento, funcionarioIdOrSpecialValue)}
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder="Nenhum (Padrão do Sistema)" />
+                                <SelectValue placeholder="Nenhum (Padrão do Sistema)">
+                                    {activeFunc ? (
+                                        <div className="flex items-center gap-2">
+                                        {activeFunc.avatarUrl ? (
+                                            <Image src={activeFunc.avatarUrl} alt={activeFunc.nome} width={20} height={20} className="rounded-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                                        ) : (
+                                            <UserCircle className="h-5 w-5 text-muted-foreground" />
+                                        )}
+                                        {activeFunc.nome} ({getEmpresaNome(activeFunc.empresaId)})
+                                        </div>
+                                    ) : "Nenhum (Padrão do Sistema)"}
+                                </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE_VALUE_FOR_SELECT}>Nenhum (Padrão do Sistema)</SelectItem>
                                 {deptFuncionarios.length === 0 && <SelectItem value="no-func-for-dep-placeholder" disabled>Nenhum funcionário compatível para este dep. {activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && currentActiveEmpresaDetails ? `na empresa ${currentActiveEmpresaDetails.nome}` : '(contexto atual)'}</SelectItem>}
                                 {deptFuncionarios.map(func => (
                                     <SelectItem key={func.id} value={func.id}>
-                                      {func.nome} ({getEmpresaNome(func.empresaId)})
+                                      <div className="flex items-center gap-2">
+                                        {func.avatarUrl ? (
+                                            <Image src={func.avatarUrl} alt={func.nome} width={20} height={20} className="rounded-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                                        ) : (
+                                            <UserCircle className="h-5 w-5 text-muted-foreground" />
+                                        )}
+                                        {func.nome} ({getEmpresaNome(func.empresaId)})
+                                      </div>
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -542,15 +683,22 @@ export function TrainingClient() {
             {displayedFuncionariosAtivos.map((func) => (
               <Card key={func.id} className="p-4 shadow-sm">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold">{func.nome}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Departamento: <span className="font-medium text-primary">{DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}</span>
-                    </p>
-                     <p className="text-sm text-muted-foreground">
-                      Empresa: <span className="font-medium text-accent">{getEmpresaNome(func.empresaId)}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">Criado em: {new Date(func.createdAt).toLocaleDateString()}</p>
+                  <div className="flex items-start gap-3">
+                    {func.avatarUrl ? (
+                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                    ) : (
+                        <UserCircle className="h-14 w-14 text-muted-foreground flex-shrink-0 mt-1" />
+                    )}
+                    <div>
+                        <h3 className="text-lg font-semibold">{func.nome}</h3>
+                        <p className="text-sm text-muted-foreground">
+                        Departamento: <span className="font-medium text-primary">{DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}</span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                        Empresa: <span className="font-medium text-accent">{getEmpresaNome(func.empresaId)}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Criado em: {new Date(func.createdAt).toLocaleDateString()}</p>
+                    </div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center flex-wrap">
                      <Button variant="outline" size="sm" onClick={() => handleEditFuncionario(func)}>
@@ -623,15 +771,22 @@ export function TrainingClient() {
             {displayedFuncionariosFerias.map((func) => (
               <Card key={func.id} className="p-4 shadow-sm bg-muted/50">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-muted-foreground">{func.nome}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Departamento: {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}
-                    </p>
-                     <p className="text-sm text-muted-foreground">
-                      Empresa: <span className="font-medium">{getEmpresaNome(func.empresaId)}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">Em férias desde: {new Date(func.createdAt).toLocaleDateString()}</p>
+                  <div className="flex items-start gap-3">
+                     {func.avatarUrl ? (
+                        <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={60} height={60} className="rounded-full border object-cover" data-ai-hint="avatar person" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                    ) : (
+                        <UserCircle className="h-14 w-14 text-muted-foreground flex-shrink-0 mt-1" />
+                    )}
+                    <div>
+                        <h3 className="text-lg font-semibold text-muted-foreground">{func.nome}</h3>
+                        <p className="text-sm text-muted-foreground">
+                        Departamento: {DEPARTAMENTOS.find(d => d.value === func.departamento)?.label || func.departamento}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                        Empresa: <span className="font-medium">{getEmpresaNome(func.empresaId)}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Em férias desde: {new Date(func.createdAt).toLocaleDateString()}</p>
+                    </div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => handleChangeFuncionarioStatus(func.id, 'Active')}>
@@ -680,3 +835,4 @@ export function TrainingClient() {
     </div>
   );
 }
+

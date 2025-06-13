@@ -95,6 +95,8 @@ export interface Funcionario {
   instrucoes: string;
   departamento: Departamento;
   empresaId?: string; // ID da empresa à qual o funcionário está associado
+  avatarUrl?: string; // URL for the avatar image
   createdAt: string; // ISO date string
   status?: FuncionarioStatus;
 }
+

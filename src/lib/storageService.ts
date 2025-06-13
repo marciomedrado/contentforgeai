@@ -256,6 +256,7 @@ export const saveFuncionario = (funcionario: Funcionario): void => {
      ...funcionario,
      status: funcionario.status || 'Active',
      empresaId: funcionario.empresaId === '_SEM_EMPRESA_' || funcionario.empresaId === '' ? undefined : funcionario.empresaId,
+     avatarUrl: funcionario.avatarUrl || undefined,
    };
 
   if (existingIndex > -1) {
@@ -349,29 +350,20 @@ export const getActiveFuncionarioForDepartamento = (departamento: Departamento, 
 
   const funcionario = getFuncionarioById(activeFuncIdForDept);
 
-  // If no funcionario found by ID, or if funcionario is on vacation, return null
   if (!funcionario || funcionario.status === 'Vacation') {
-     // If the active Funcionario ID pointed to someone on vacation, clear it for the department
-    if (funcionario && funcionario.status === 'Vacation' ) {
+    if (funcionario && funcionario.status === 'Vacation' && activeFuncIdForDept === activeMap[departamento]) {
         const activeMap = getActiveFuncionariosMap();
-        if (activeMap[departamento] === activeFuncIdForDept) {
-          activeMap[departamento] = null;
-          saveActiveFuncionariosMap(activeMap);
-        }
+        activeMap[departamento] = null;
+        saveActiveFuncionariosMap(activeMap);
     }
     return null;
   }
 
-  // If a global company context is active (not "Visão Geral")
   if (globalActiveEmpresaId && globalActiveEmpresaId !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) {
-    // Funcionario must belong to the active company OR be "Available" (no empresaId)
     if (funcionario.empresaId && funcionario.empresaId !== globalActiveEmpresaId) {
-      return null; // Funcionario belongs to a different company, not valid in this context
+      return null;
     }
-    // If funcionario.empresaId is undefined, it's "Available" and valid.
-    // If funcionario.empresaId === globalActiveEmpresaId, it's a match and valid.
   }
-  // If no global company context (Visão Geral), or if funcionario is "Available" or matches the active company, return it.
   return funcionario;
 };
 
@@ -385,7 +377,7 @@ export const saveEmpresa = (empresa: Empresa): void => {
   const existingIndex = empresas.findIndex(e => e.id === empresa.id);
   const empresaToSave: Empresa = {
     ...empresa,
-    apiConfigs: empresa.apiConfigs || {}, // Ensure apiConfigs is initialized
+    apiConfigs: empresa.apiConfigs || {},
   };
 
   if (existingIndex > -1) {
@@ -410,7 +402,7 @@ export const deleteEmpresaById = (id: string): void => {
   funcionarios = funcionarios.map(f => {
     if (f.empresaId === id) {
       funcionariosChanged = true;
-      return { ...f, empresaId: undefined }; // Make them "Available"
+      return { ...f, empresaId: undefined }; 
     }
     return f;
   });
@@ -418,7 +410,6 @@ export const deleteEmpresaById = (id: string): void => {
     safeLocalStorageSet<Funcionario[]>(FUNCIONARIOS_STORAGE_KEY, funcionarios);
   }
 
-  // If the deleted empresa was the active one, reset active empresa
   const currentActiveEmpresaId = getActiveEmpresaId();
   if (currentActiveEmpresaId === id) {
     setActiveEmpresaId(null);
@@ -463,5 +454,6 @@ export const clearAllData = (): void => {
   saveStoredRefinementPrompts([]);
   clearAllFuncionarios();
   clearAllEmpresas();
-  setActiveEmpresaId(null); // Also clear active empresa
+  setActiveEmpresaId(null); 
 };
+
