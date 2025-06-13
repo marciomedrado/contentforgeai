@@ -11,7 +11,7 @@ import { EMPRESAS_STORAGE_KEY } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Save, Trash2, Building2, Edit3, AlertTriangle, Image as ImageIcon, Settings, Info } from 'lucide-react';
 import {
@@ -19,7 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
+  DialogDescription as DialogDescUi,
   DialogFooter,
   DialogTrigger,
   DialogClose,
@@ -36,7 +36,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import Image from 'next/image';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription as AlertDesc } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const empresaFormSchema = z.object({
@@ -351,17 +351,17 @@ export function EmpresasClient() {
           <DialogContent className="sm:max-w-[600px] md:max-w-[700px]">
             <DialogHeader>
               <DialogTitle>Configurar APIs para: {selectedEmpresaForSettings.nome}</DialogTitle>
-              <DialogDescription>
+              <DialogDescUi>
                 Configure os detalhes de conexão para plataformas externas.
                  Lembre-se: Senhas e tokens são sensíveis, manuseie com cuidado.
-              </DialogDescription>
+              </DialogDescUi>
             </DialogHeader>
             <Alert variant="default" className="my-2 border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30">
                 <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertDescription className="text-blue-700 dark:text-blue-300">
+                <AlertDesc className="text-blue-700 dark:text-blue-300">
                     A funcionalidade de envio direto para estas plataformas é um próximo passo e não está implementada nesta versão.
                     Esta tela serve apenas para armazenar as configurações.
-                </AlertDescription>
+                </AlertDesc>
             </Alert>
             <Tabs defaultValue="wordpress" className="w-full pt-2">
               <TabsList className="grid w-full grid-cols-3">
