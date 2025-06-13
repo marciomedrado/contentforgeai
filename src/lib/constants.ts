@@ -63,3 +63,17 @@ export const ALL_EMPRESAS_OR_VISAO_GERAL_VALUE = '_ALL_EMPRESAS_';
 export const FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE = '_CURRENT_EMPRESA_AND_AVAILABLE_';
 export const FUNCIONARIO_FILTER_AVAILABLE_ONLY = '_AVAILABLE_ONLY_';
 export const FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE = '_ALL_EMPRESAS_AND_AVAILABLE_';
+
+// Backup Filename
+export const BACKUP_FILENAME_PREFIX = 'ContentForgeAI_Backup_';
+
+// CSV Data Types
+export const CSV_DATA_TYPE_CONTENT_ITEM = 'ContentItem';
+export const CSV_DATA_TYPE_THEME_SUGGESTION = 'ThemeSuggestion';
+export const CSV_DATA_TYPE_SUMMARIZATION_ITEM = 'SummarizationItem';
+export const CSV_DATA_TYPE_FUNCIONARIO = 'Funcionario';
+export const CSV_DATA_TYPE_EMPRESA = 'Empresa';
+export const CSV_DATA_TYPE_SAVED_REFINEMENT_PROMPT = 'SavedRefinementPrompt';
+export const CSV_DATA_TYPE_APP_SETTINGS = 'AppSettings';
+export const CSV_DATA_TYPE_ACTIVE_FUNCIONARIO_CONFIG = 'ActiveFuncionarioConfig';
+export const CSV_DATA_TYPE_ACTIVE_EMPRESA_ID = 'ActiveEmpresaId';
