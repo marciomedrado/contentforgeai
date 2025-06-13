@@ -77,6 +77,12 @@ type FuncionarioFormData = z.infer<typeof funcionarioFormSchema>;
 const NONE_VALUE_FOR_SELECT = "_NONE_";
 const SEM_EMPRESA_VALUE = "_SEM_EMPRESA_";
 
+interface AvatarViewerInfo {
+  url: string | null;
+  nome: string | null;
+  empresaNome: string | null;
+}
+
 export function TrainingClient() {
   const { toast } = useToast();
   const [allFuncionariosUnfilteredStorage, setAllFuncionariosUnfilteredStorage] = useState<Funcionario[]>([]);
@@ -93,7 +99,7 @@ export function TrainingClient() {
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
 
   const [isAvatarViewerOpen, setIsAvatarViewerOpen] = useState(false);
-  const [avatarToViewUrl, setAvatarToViewUrl] = useState<string | null>(null);
+  const [avatarViewerInfo, setAvatarViewerInfo] = useState<AvatarViewerInfo>({ url: null, nome: null, empresaNome: null });
 
 
   const form = useForm<FuncionarioFormData>({
@@ -336,8 +342,12 @@ export function TrainingClient() {
     }
   };
 
-  const openAvatarViewer = (url: string) => {
-    setAvatarToViewUrl(url);
+  const openAvatarViewer = (url: string, nomeFuncionario?: string, nomeEmpresa?: string) => {
+    setAvatarViewerInfo({
+      url: url,
+      nome: nomeFuncionario || "Funcionário",
+      empresaNome: nomeEmpresa || "Empresa não especificada"
+    });
     setIsAvatarViewerOpen(true);
   };
 
@@ -456,7 +466,19 @@ export function TrainingClient() {
                     </div>
                     {currentFormAvatarUrl && (
                         <div className="mt-2">
-                            <button type="button" onClick={() => currentFormAvatarUrl && openAvatarViewer(currentFormAvatarUrl)} className="cursor-pointer">
+                             <button
+                                type="button"
+                                onClick={() =>
+                                currentFormAvatarUrl &&
+                                openAvatarViewer(
+                                    currentFormAvatarUrl,
+                                    form.getValues('nome') || "Funcionário",
+                                    getEmpresaNome(form.getValues('empresaId'))
+                                )
+                                }
+                                className="cursor-pointer"
+                                disabled={!currentFormAvatarUrl}
+                            >
                                 <Image
                                     src={currentFormAvatarUrl}
                                     alt="Preview do Avatar"
@@ -486,7 +508,6 @@ export function TrainingClient() {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={false} 
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -696,7 +717,7 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                     {func.avatarUrl ? (
-                        <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl)} className="cursor-pointer">
+                        <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer" disabled={!func.avatarUrl}>
                             <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                         </button>
                     ) : (
@@ -786,7 +807,7 @@ export function TrainingClient() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
                      {func.avatarUrl ? (
-                          <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl)} className="cursor-pointer">
+                          <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer" disabled={!func.avatarUrl}>
                             <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                           </button>
                     ) : (
@@ -852,13 +873,17 @@ export function TrainingClient() {
       <Dialog open={isAvatarViewerOpen} onOpenChange={setIsAvatarViewerOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitleUi>Visualizar Avatar</DialogTitleUi>
+            <DialogTitleUi>
+                {avatarViewerInfo.nome && avatarViewerInfo.empresaNome 
+                ? `${avatarViewerInfo.nome} (${avatarViewerInfo.empresaNome})`
+                : "Visualizar Avatar"}
+            </DialogTitleUi>
           </DialogHeader>
           <div className="flex justify-center items-center py-4">
-            {avatarToViewUrl ? (
+            {avatarViewerInfo.url ? (
               <Image
-                src={avatarToViewUrl}
-                alt="Avatar Ampliado"
+                src={avatarViewerInfo.url}
+                alt={avatarViewerInfo.nome ? `Avatar de ${avatarViewerInfo.nome}` : "Avatar Ampliado"}
                 width={600}
                 height={600}
                 className="rounded-md object-contain border"
@@ -883,3 +908,5 @@ export function TrainingClient() {
     </div>
   );
 }
+
+    
