@@ -58,3 +58,8 @@ export const EMPRESAS_STORAGE_KEY = 'contentForgeAi_empresas';
 export const ACTIVE_EMPRESA_ID_STORAGE_KEY = 'contentForgeAi_activeEmpresaId';
 
 export const ALL_EMPRESAS_OR_VISAO_GERAL_VALUE = '_ALL_EMPRESAS_';
+
+// Funcionario List Filters (for TrainingClient.tsx local filter)
+export const FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE = '_CURRENT_EMPRESA_AND_AVAILABLE_';
+export const FUNCIONARIO_FILTER_AVAILABLE_ONLY = '_AVAILABLE_ONLY_';
+export const FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE = '_ALL_EMPRESAS_AND_AVAILABLE_';

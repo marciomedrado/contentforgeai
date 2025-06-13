@@ -18,7 +18,7 @@ import {
   FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE
 } from '@/lib/constants';
 import {
-  getFuncionariosUnfiltered, // Changed from getFuncionarios
+  getFuncionariosUnfiltered,
   saveFuncionario,
   deleteFuncionarioById,
   setActiveFuncionarioForDepartamento,
@@ -67,7 +67,7 @@ const SEM_EMPRESA_VALUE = "_SEM_EMPRESA_";
 
 export function TrainingClient() {
   const { toast } = useToast();
-  const [allFuncionariosUnfiltered, setAllFuncionariosUnfiltered] = useState<Funcionario[]>([]);
+  const [allFuncionariosUnfilteredStorage, setAllFuncionariosUnfilteredStorage] = useState<Funcionario[]>([]);
   const [allEmpresas, setAllEmpresas] = useState<Empresa[]>([]);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
   const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<string, string | null>>({});
@@ -87,7 +87,7 @@ export function TrainingClient() {
   });
 
   const refreshAllData = useCallback(() => {
-    setAllFuncionariosUnfiltered(getFuncionariosUnfiltered());
+    setAllFuncionariosUnfilteredStorage(getFuncionariosUnfiltered());
     setAllEmpresas(getEmpresas());
     
     const activeIds: Record<string, string | null> = {};
@@ -115,7 +115,7 @@ export function TrainingClient() {
         refreshAllData();
       }
       if (event.key === EMPRESAS_STORAGE_KEY || event.key === ACTIVE_EMPRESA_ID_STORAGE_KEY) {
-        refreshAllData(); // Refresh all data if companies change as it affects filters
+        refreshAllData();
         refreshEmpresaDetails();
       }
     };
@@ -156,7 +156,6 @@ export function TrainingClient() {
       title: editingFuncionario ? "Funcionário Atualizado!" : "Funcionário Criado!",
       description: `O funcionário "${data.nome}" foi salvo.`,
     });
-    // Reset form considering current global company context for empresaId default
     const defaultEmpresaId = (activeEmpresaIdGlobal && activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE) ? activeEmpresaIdGlobal : SEM_EMPRESA_VALUE;
     form.reset({ nome: '', instrucoes: '', departamento: undefined, empresaId: defaultEmpresaId });
     setEditingFuncionario(null);
@@ -212,7 +211,7 @@ export function TrainingClient() {
 
   const handleChangeFuncionarioStatus = (id: string, newStatus: FuncionarioStatus) => {
     setFuncionarioStatus(id, newStatus); 
-    const funcionario = allFuncionariosUnfiltered.find(f => f.id === id);
+    const funcionario = allFuncionariosUnfilteredStorage.find(f => f.id === id);
     toast({
       title: `Status Alterado!`,
       description: `Funcionário "${funcionario?.nome}" agora está ${newStatus === 'Vacation' ? 'de Férias' : 'Ativo'}.`,
@@ -252,12 +251,12 @@ export function TrainingClient() {
     if (empresa) {
       return `Empresa: ${empresa.nome}`;
     }
-    return "Visão Geral";
+    return "Visão Geral (Todas e Disponíveis)";
   }, [funcionarioListFilter, currentActiveEmpresaDetails, allEmpresas]);
 
 
   const filteredFuncionarios = useMemo(() => {
-    return allFuncionariosUnfiltered.filter(f => {
+    return allFuncionariosUnfilteredStorage.filter(f => {
       if (funcionarioListFilter === FUNCIONARIO_FILTER_CURRENT_WITH_AVAILABLE) {
         return (activeEmpresaIdGlobal && f.empresaId === activeEmpresaIdGlobal) || !f.empresaId;
       }
@@ -265,12 +264,11 @@ export function TrainingClient() {
         return !f.empresaId;
       }
       if (funcionarioListFilter === FUNCIONARIO_FILTER_ALL_WITH_AVAILABLE) {
-        return true; // No specific company filter, show all
+        return true;
       }
-      // If funcionarioListFilter is a specific company ID
       return f.empresaId === funcionarioListFilter;
     });
-  }, [allFuncionariosUnfiltered, funcionarioListFilter, activeEmpresaIdGlobal]);
+  }, [allFuncionariosUnfilteredStorage, funcionarioListFilter, activeEmpresaIdGlobal]);
 
   const displayedFuncionariosAtivos = useMemo(
     () => filteredFuncionarios.filter(f => f.status === 'Active' || !f.status),
@@ -389,7 +387,6 @@ export function TrainingClient() {
                             <SelectItem 
                               key={emp.id} 
                               value={emp.id}
-                              // If global company is active, restrict selection unless editing or global is this company
                               disabled={!!activeEmpresaIdGlobal && 
                                         activeEmpresaIdGlobal !== ALL_EMPRESAS_OR_VISAO_GERAL_VALUE && 
                                         emp.id !== activeEmpresaIdGlobal &&
@@ -494,7 +491,6 @@ export function TrainingClient() {
         </CardContent>
       </Card>
 
-      {/* Employees List Section */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
@@ -524,6 +520,9 @@ export function TrainingClient() {
                   {allEmpresas.map(emp => (
                     <SelectItem key={emp.id} value={emp.id}>Empresa: {emp.nome}</SelectItem>
                   ))}
+                   {allEmpresas.length === 0 && (
+                    <SelectItem value="no-empresas-for-filter" disabled>Nenhuma empresa para filtrar</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -680,5 +679,3 @@ export function TrainingClient() {
     </div>
   );
 }
-
-    
