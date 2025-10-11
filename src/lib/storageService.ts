@@ -14,6 +14,8 @@ import {
   ACTIVE_EMPRESA_ID_STORAGE_KEY,
   ALL_EMPRESAS_OR_VISAO_GERAL_VALUE
 } from './constants';
+import { saveAvatarToDb, removeAvatarFromDb } from './imageStorageService';
+
 
 // Helper to safely interact with localStorage
 const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
@@ -46,6 +48,9 @@ const safeLocalStorageSet = <T>(key: string, value: T): void => {
     }));
   } catch (error) {
     console.error(`Error setting item ${key} in localStorage`, error);
+    if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22)) {
+        alert("Erro de Armazenamento: O armazenamento local do navegador está cheio. Não foi possível salvar as alterações. Tente limpar dados antigos através da página de Configurações ou remova funcionários não utilizados.");
+    }
   }
 };
 
@@ -254,12 +259,22 @@ export const getFuncionarios = (activeEmpresaId?: string | null): Funcionario[] 
 export const saveFuncionario = (funcionario: Funcionario): void => {
   let funcionarios = getFuncionariosUnfiltered();
   const existingIndex = funcionarios.findIndex(f => f.id === funcionario.id);
+  
   const funcionarioToSave: Funcionario = {
-     ...funcionario,
+     id: funcionario.id,
+     nome: funcionario.nome,
+     instrucoes: funcionario.instrucoes,
+     departamento: funcionario.departamento,
+     createdAt: funcionario.createdAt,
      status: funcionario.status || 'Active',
      empresaId: funcionario.empresaId === '_SEM_EMPRESA_' || funcionario.empresaId === '' ? undefined : funcionario.empresaId,
-     avatarUrl: funcionario.avatarUrl || undefined,
-   };
+     avatarUrl: (funcionario.avatarUrl && !funcionario.avatarUrl.startsWith('data:')) ? funcionario.avatarUrl : undefined,
+  };
+
+  // Handle avatar data URI separately
+  if (funcionario.avatarUrl && funcionario.avatarUrl.startsWith('data:')) {
+    saveAvatarToDb(funcionario.id, funcionario.avatarUrl);
+  }
 
   if (existingIndex > -1) {
     funcionarios[existingIndex] = funcionarioToSave;
@@ -277,6 +292,9 @@ export const getFuncionarioById = (id: string): Funcionario | undefined => {
 export const deleteFuncionarioById = (id: string): void => {
   const funcionarios = getFuncionariosUnfiltered();
   saveFuncionariosList(funcionarios.filter(f => f.id !== id));
+  
+  // Also remove from IndexedDB
+  removeAvatarFromDb(id);
 
   const activeFuncionarios = getActiveFuncionariosMap();
   let changed = false;
@@ -293,8 +311,10 @@ export const deleteFuncionarioById = (id: string): void => {
 };
 
 export const clearAllFuncionarios = (): void => {
-  saveFuncionariosList([]);
-  saveActiveFuncionariosMap({});
+    const allFuncs = getFuncionariosUnfiltered();
+    allFuncs.forEach(f => removeAvatarFromDb(f.id));
+    saveFuncionariosList([]);
+    saveActiveFuncionariosMap({});
 };
 
 export const setFuncionarioStatus = (funcionarioId: string, status: FuncionarioStatus): void => {

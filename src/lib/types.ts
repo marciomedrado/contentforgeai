@@ -99,4 +99,3 @@ export interface Funcionario {
   createdAt: string; // ISO date string
   status?: FuncionarioStatus;
 }
-

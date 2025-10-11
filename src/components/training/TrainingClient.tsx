@@ -28,6 +28,7 @@ import {
   getEmpresaById,
   getFuncionarioById,
 } from '@/lib/storageService';
+import { getAvatarFromDb } from '@/lib/imageStorageService';
 import { generateImage as generateImageFlow } from '@/ai/flows/generate-image-flow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,9 +84,13 @@ interface AvatarViewerInfo {
   empresaNome: string | null;
 }
 
+interface FuncionarioComAvatar extends Funcionario {
+    avatarDataUrl?: string | null;
+}
+
 export function TrainingClient() {
   const { toast } = useToast();
-  const [allFuncionariosUnfilteredStorage, setAllFuncionariosUnfilteredStorage] = useState<Funcionario[]>([]);
+  const [allFuncionariosUnfilteredStorage, setAllFuncionariosUnfilteredStorage] = useState<FuncionarioComAvatar[]>([]);
   const [allEmpresas, setAllEmpresas] = useState<Empresa[]>([]);
   const [editingFuncionario, setEditingFuncionario] = useState<Funcionario | null>(null);
   const [activeFuncionarioIds, setActiveFuncionarioIds] = useState<Record<string, string | null>>({});
@@ -115,8 +120,16 @@ export function TrainingClient() {
   const currentFormAvatarUrl = form.watch('avatarUrl');
 
 
-  const refreshAllData = useCallback(() => {
-    setAllFuncionariosUnfilteredStorage(getFuncionariosUnfiltered());
+  const refreshAllData = useCallback(async () => {
+    const funcs = getFuncionariosUnfiltered();
+    const funcsWithAvatars = await Promise.all(
+        funcs.map(async (func) => {
+            const avatarDataUrl = await getAvatarFromDb(func.id);
+            return { ...func, avatarDataUrl };
+        })
+    );
+    setAllFuncionariosUnfilteredStorage(funcsWithAvatars);
+
     setAllEmpresas(getEmpresas());
     
     const activeIds: Record<string, string | null> = {};
@@ -191,14 +204,15 @@ export function TrainingClient() {
     setEditingFuncionario(null);
   };
 
-  const handleEditFuncionario = (funcionario: Funcionario) => {
+  const handleEditFuncionario = async (funcionario: FuncionarioComAvatar) => {
     setEditingFuncionario(funcionario);
+    const avatarUrl = funcionario.avatarDataUrl || funcionario.avatarUrl;
     form.reset({
       nome: funcionario.nome,
       instrucoes: funcionario.instrucoes,
       departamento: funcionario.departamento,
       empresaId: funcionario.empresaId || SEM_EMPRESA_VALUE,
-      avatarUrl: funcionario.avatarUrl || '',
+      avatarUrl: avatarUrl || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -256,8 +270,8 @@ export function TrainingClient() {
     return empresa ? empresa.nome : "Empresa Desconhecida";
   };
   
-  const funcionariosDisponiveisParaDepartamento = useCallback((departamento: Departamento) => {
-      let funcs = getFuncionariosUnfiltered().filter(f => 
+  const funcionariosDisponiveisParaDepartamento = useCallback((departamento: Departamento): FuncionarioComAvatar[] => {
+      let funcs: FuncionarioComAvatar[] = allFuncionariosUnfilteredStorage.filter(f => 
           f.departamento === departamento && 
           (f.status === 'Active' || !f.status) 
       );
@@ -266,7 +280,7 @@ export function TrainingClient() {
           funcs = funcs.filter(f => !f.empresaId || f.empresaId === activeEmpresaIdGlobal);
       }
       return funcs;
-  }, [activeEmpresaIdGlobal]);
+  }, [activeEmpresaIdGlobal, allFuncionariosUnfilteredStorage]);
 
 
   const getLocalFilterLabel = useCallback(() => {
@@ -414,7 +428,7 @@ export function TrainingClient() {
                     <FormLabel>URL do Avatar (Opcional)</FormLabel>
                     <div className="flex items-center gap-2">
                         <FormControl className="flex-grow">
-                            <Input placeholder="https://exemplo.com/avatar.png" {...field} />
+                            <Input placeholder="https://exemplo.com/avatar.png ou data:image/..." {...field} />
                         </FormControl>
                         <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>
                             <Button
@@ -634,7 +648,7 @@ export function TrainingClient() {
             {DEPARTAMENTOS.map(dep => {
                 const deptFuncionarios = funcionariosDisponiveisParaDepartamento(dep.value as Departamento);
                 const currentActiveIdForDep = activeFuncionarioIds[dep.value];
-                const activeFunc = currentActiveIdForDep ? getFuncionarioById(currentActiveIdForDep) : null;
+                const activeFunc = currentActiveIdForDep ? allFuncionariosUnfilteredStorage.find(f => f.id === currentActiveIdForDep) : null;
 
                 return (
                     <div key={dep.value} className="space-y-2 p-3 border rounded-md shadow-sm">
@@ -647,8 +661,8 @@ export function TrainingClient() {
                                 <SelectValue placeholder="Nenhum (Padrão do Sistema)">
                                     {activeFunc ? (
                                         <div className="flex items-center gap-2">
-                                        {activeFunc.avatarUrl ? (
-                                            <Image src={activeFunc.avatarUrl} alt={activeFunc.nome} width={20} height={20} className="rounded-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                                        {(activeFunc.avatarDataUrl || activeFunc.avatarUrl) ? (
+                                            <Image src={activeFunc.avatarDataUrl || activeFunc.avatarUrl!} alt={activeFunc.nome} width={20} height={20} className="rounded-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
                                         ) : (
                                             <UserCircle className="h-5 w-5 text-muted-foreground" />
                                         )}
@@ -663,8 +677,8 @@ export function TrainingClient() {
                                 {deptFuncionarios.map(func => (
                                     <SelectItem key={func.id} value={func.id}>
                                       <div className="flex items-center gap-2">
-                                        {func.avatarUrl ? (
-                                            <Image src={func.avatarUrl} alt={func.nome} width={20} height={20} className="rounded-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
+                                        {(func.avatarDataUrl || func.avatarUrl) ? (
+                                            <Image src={func.avatarDataUrl || func.avatarUrl!} alt={func.nome} width={20} height={20} className="rounded-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'}/>
                                         ) : (
                                             <UserCircle className="h-5 w-5 text-muted-foreground" />
                                         )}
@@ -724,9 +738,9 @@ export function TrainingClient() {
               <Card key={func.id} className="p-4 shadow-sm">
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
-                    {func.avatarUrl ? (
-                        <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer">
-                            <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                    {(func.avatarDataUrl || func.avatarUrl) ? (
+                        <button type="button" onClick={() => (func.avatarDataUrl || func.avatarUrl) && openAvatarViewer(func.avatarDataUrl || func.avatarUrl!, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer">
+                            <Image src={func.avatarDataUrl || func.avatarUrl!} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                         </button>
                     ) : (
                         <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
@@ -814,9 +828,9 @@ export function TrainingClient() {
               <Card key={func.id} className="p-4 shadow-sm bg-muted/50">
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-3">
-                     {func.avatarUrl ? (
-                          <button type="button" onClick={() => func.avatarUrl && openAvatarViewer(func.avatarUrl, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer">
-                            <Image src={func.avatarUrl} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
+                     {(func.avatarDataUrl || func.avatarUrl) ? (
+                          <button type="button" onClick={() => (func.avatarDataUrl || func.avatarUrl) && openAvatarViewer(func.avatarDataUrl || func.avatarUrl!, func.nome, getEmpresaNome(func.empresaId))} className="cursor-pointer">
+                            <Image src={func.avatarDataUrl || func.avatarUrl!} alt={`Avatar de ${func.nome}`} width={120} height={120} className="rounded-full border object-cover hover:opacity-80 transition-opacity" data-ai-hint="avatar person" onError={(e) => { e.currentTarget.src = 'https://placehold.co/120x120.png'; e.currentTarget.alt = 'Placeholder Avatar';}}/>
                           </button>
                     ) : (
                         <UserCircle className="h-28 w-28 text-muted-foreground flex-shrink-0 mt-1" />
@@ -916,5 +930,3 @@ export function TrainingClient() {
     </div>
   );
 }
-
-    
